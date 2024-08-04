@@ -28,26 +28,27 @@
 
 
 % Define colors for GitHub dark mode appearance
-\definecolor{background}{rgb}{0.1, 0.1, 0.1}
+\definecolor{background}{rgb}{1, 1, 1}
 \definecolor{comment}{rgb}{0.5, 0.5, 0.5}
-\definecolor{keyword}{rgb}{0.75, 0.12, 0.34}
-\definecolor{identifier}{rgb}{0.75, 0.75, 0.75}
-\definecolor{string}{rgb}{0.63, 0.0, 0.0}
-\definecolor{function}{rgb}{0.12, 0.47, 0.71}
-\definecolor{number}{rgb}{0.56, 0.35, 0.0}
+\definecolor{keyword}{rgb}{0.13, 0.54, 0.13}
+\definecolor{identifier}{rgb}{0, 0, 0}
+\definecolor{string}{rgb}{0.63, 0.13, 0.94}
+\definecolor{function}{rgb}{0.18, 0.18, 0.78}
+\definecolor{number}{rgb}{0.56, 0.35, 0}
+\definecolor{rulecolor}{rgb}{0.8, 0.8, 0.8}
 
 % Configure the listings package
 \lstset{
     backgroundcolor=\color{background},
     frame=single,
-    rulecolor=\color{gray},
+    rulecolor=\color{rulecolor},
     frameround=tttt,
     basicstyle=\ttfamily\footnotesize\color{identifier},
     keywordstyle=\color{keyword}\bfseries,
     identifierstyle=\color{identifier},
     commentstyle=\color{comment}\itshape,
     stringstyle=\color{string},
-    numberstyle=\tiny\color{gray},
+    numberstyle=\tiny\color{rulecolor},
     stepnumber=1,
     numbersep=10pt,
     showstringspaces=false,
@@ -55,7 +56,7 @@
     tabsize=4,
     captionpos=b,
     language=Python,
-    morekeywords={self, np, plt, def, sample},
+    morekeywords={self, np, plt, def, sample, plate},
     literate=*{:}{{\textcolor{number}{:}}}1
              {=}{{\textcolor{number}{=}}}1
              {+}{{\textcolor{number}{+}}}1
@@ -84,7 +85,7 @@
 \addbibresource{report/library.bib}
 
 
-\newcommand{\Norm}{\mathcal{N}()}
+\newcommand{\Norm}{\mathcal{N}}
 \newcommand{\pdf}{p(|)}
 
 
@@ -118,7 +119,8 @@
     Summer term 2024
     \end{center}
     \end{titlepage}
-
+\section{Introduction}
+In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown.
 \section{Mathematical basics}
 \begin{equation}
     p(\bm \theta|\mathcal{D}) = \frac{p(\mathcal{D}|\bm \theta)p(\bm \theta)}{\int_{\theta'}p(\mathcal{D}|\bm \theta')p(\bm \theta')}
@@ -127,7 +129,7 @@
     p(\bm f( \bm x_*) |\bm X, \bm Y ) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta
 \end{equation}
 \subsection{Baysian Neural Networks}
-Priors over wheigts, baysian inference, uncertainty quatification
+Priors over wheigts, baysian inference, uncertainty quatification sigma somehow makes the model underfit. Even when choosing extreme priors it falls into weird positons. very data hungry
 \subsection{Variational Inference}
 
 
@@ -142,12 +144,114 @@ where we just use two normal distributions as priors for the wheigts and biases.
     W = numpyro.sample(f"W{i}", dist.Normal(0, 1).expand(n_in, n_out))
     b = numpyro.sample(f"b{i}", dist.Normal(0, 1).expand((n_out, )))
 \end{lstlisting}
-Here $\bm W_i$ and $\bm b_i$ are the corresponding parameters for the i-th layer. Generally, other priors can also be used, however the normal distributions lead to good results.
-Priors, Network, inference, Variational inference, talk about numpyro
+Generally, other priors can also be used, however the normal distributions lead to good results. Two  other ways of initializing the weights are e.g Xavier initialization $\alpha_l^2 = \tfrac{2}{n_{in}+n_{out}}$ or LeCun initialization $\alpha_l^2 = \tfrac{1}{n_{in}}$ \cite{murphy}. The weights would then be initialized according to:
+\begin{equation}
+    \bm W_l \thicksim \Norm(\bm 0, \alpha_l^2 \bm I); \; \bm b_l \thicksim \Norm(\bm 0, \alpha_l^2 \bm I)
+\end{equation}
+Here $\bm W_i$ and $\bm b_i$ are the corresponding parameters for the i-th layer. Another very important step is to normalize the data:
+\begin{equation}
+     y_{i, \text{normalized}} = \frac{ y_i - \mu_{\bm Y}}{\sigma_{\bm Y}}
+\end{equation}
+since there was very poor performance without the normalization. For making predictions after training, the values are transformed back:
+\begin{equation}
+    \hat{y}_i = \hat{y}_{i,\text{normalized}} \cdot {\sigma_{\bm Y}} + \mu_{\bm Y}
+\end{equation}
+\begin{equation}
+    \bm f(\bm x|\bm \theta) = \sum_i w^{(L)}_{ji} \left( \ldots \phi \left( \sum_k w^{(1)}_{mk}x_k + \bm b^{(1)} \right) \right) + \bm b^{(L)}
+\end{equation}
+
+\begin{lstlisting}
+def forward(
+        W: List[jax.Array],
+        b: List[jax.Array],
+        X: jax.Array,
+        activation: Callable,
+):
+    #input layer
+    z = activation(jnp.dot(X, W[0]) + b[0])
+
+    #hidden layers
+    for i in range(1, len(W) - 1):
+        z = activation(jnp.dot(z, W[i]) + b[i])
+
+    #output layer with no activation
+    z = jnp.dot(z, W[-1]) + b[-1]
+    return z.squeeze()
+    
+def wideband_dnn(
+        X: jax.Array,
+        Y: jax.Array,
+        layers: List[int],
+):
+    N, input_dim = X.shape
+    activation = jax.nn.relu
+    W = []
+    b = []
+    #build the layers with the given list
+    for i, layer in enumerate(layers):
+        W_, b_ = dense_layer(i, [input_dim, layer])
+        W.append(W_)
+        b.append(b_)
+        input_dim = layer
+    #forward pass through the network
+    z = forward(W, b, X, activation)
+    
+    precision_obs = numpyro.sample(r"observation precision", dist.Gamma(3., 1.))
+    sigma_obs = 1.0 / jnp.sqrt(precision_obs)
+
+    with numpyro.plate("data", N):
+        numpyro.sample(
+            "Y", 
+            dist.Normal(z, sigma_obs).to_event(1), 
+            obs=Y
+        )
+\end{lstlisting}
+The general from of a feed-forward Neural Network
+For predicting new values at $\bm x_*$, we draw samples from the trained variational distribution $q_\theta $
+\begin{lstlisting}
+def predict_new(
+        svi_result,
+        guide,
+        X_test: jax.Array,
+        num_samples: int = 500,
+        *,
+        key: jr.key,
+        return_mean: bool = True,
+    )-> Tuple:
+    
+    sample_key, prediction_key = jr.split(key, 2)
+    #sample from the trained guide
+    samples = guide.sample_posterior(
+        sample_key, svi_result.params, sample_shape=(num_samples, )
+    )
+    #define predictive distribution with samples and the model.
+    predictive_distribution = Predictive(
+        wideband_dnn, samples, return_sites=["Y"]
+    )
+    #sample from the predictive distribution given new test points
+    predictions = predictive_distribution(
+        prediction_key, X_test, None, LAYERS
+    )
+    if return_mean is True:
+        return jnp.mean(predictions["Y"], axis=0), jnp.var(predictions["Y"], axis=0)
+    else:
+        return jnp.mean(predictions["Y"], axis=0), jnp.var(predictions["Y"], axis=0), predictions
+\end{lstlisting}
 
 \section{Numerical examples}
 maybe normal NN against BNN\\
 transistor data, oscillator data
+\subsection{Damped Oscillator}
+\begin{equation}
+    \begin{aligned}
+    {\displaystyle {\begin{cases}
+        m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t) \\ u(0) = 0, \; \frac{\partial u(t)}{\partial t} = 0\end{cases}}}
+    \end{aligned}
+\end{equation}
+
+\begin{equation}
+    f(t) = 4 \sin(2\pi t)
+\end{equation}
 \subsection{Transistor surrogate model/Transformer model akash}
 Here the data set consists of an inputs $ \bm x$, which specify the circuit layout and of the envelope of the fourier transformed output of the simulation data $\bm y$ over a specified frequency range.
 \begin{align}
@@ -167,13 +271,13 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
 with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range.
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{../plots/data_samples.png}
+    \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
     \caption{Samples from the training data for frequency domain}
     \label{fig:training_samples}
 \end{figure}
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{../plots/prediction_transformer.png}
+    \includegraphics[width=0.6\textwidth]{plots/prediction_transformer.png}
     \caption{Samples from the training data for frequency domain}
     \label{fig:training_samples}
 \end{figure}

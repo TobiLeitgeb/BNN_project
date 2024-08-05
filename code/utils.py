@@ -3,6 +3,7 @@ from typing import Tuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import jax.random as jr
 
 def get_data(
         X: jax.Array,
@@ -125,3 +126,45 @@ def plot_samples(
     ax.plot(f, predicted_mean, "r--", label="mean")
 
     ax.legend()
+
+
+from scipy.stats.qmc import Sobol
+
+def sample_training_points_space_filling(
+        X, 
+        Y_1, 
+        Y_2, 
+        num_samples, 
+        noise_levels: Tuple[float, float] = (1e-2, 1e-2),
+        seed=0
+):
+    """
+    Sample training points from X, Y_1, and Y_2 using Sobol sequences.
+    Generates different X positions for Y_1 and Y_2.
+    """
+    num_total_samples = X.shape[0]
+    
+    # Initialize Sobol sequence samplers for Y_1 and Y_2
+    sobol_1 = Sobol(d=1, scramble=True, seed=seed)
+    sobol_2 = Sobol(d=1, scramble=True, seed=seed + 1)  # Different seed for different sequence
+    
+    sobol_samples_1 = sobol_1.random(num_samples)
+    sobol_samples_2 = sobol_2.random(num_samples)
+    
+    indices_1 = (sobol_samples_1 * num_total_samples).astype(int).flatten()
+    indices_2 = (sobol_samples_2 * num_total_samples).astype(int).flatten()
+    
+    indices_1 = jnp.clip(indices_1, 0, num_total_samples - 1)
+    indices_2 = jnp.clip(indices_2, 0, num_total_samples - 1)
+    
+    # Sample from the arrays using the Sobol sequence indices
+    X_samples_1 = X[indices_1] 
+    Y_1_samples = Y_1[indices_1] + jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * 1e-2
+    X_samples_2 = X[indices_2]
+    Y_2_samples = Y_2[indices_2]+ jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * 1e-2
+    
+    # test set without the training points
+
+
+
+    return X_samples_1[:,None], Y_1_samples[:,None], X_samples_2[:,None], Y_2_samples[:,None], X[:,None], Y_1[:,None], Y_2[:,None]

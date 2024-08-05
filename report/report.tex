@@ -56,7 +56,7 @@
     tabsize=4,
     captionpos=b,
     language=Python,
-    morekeywords={self, np, plt, def, sample, plate},
+    morekeywords={self, np, plt, def, sample, plate, partial, jax},
     literate=*{:}{{\textcolor{number}{:}}}1
              {=}{{\textcolor{number}{=}}}1
              {+}{{\textcolor{number}{+}}}1
@@ -86,7 +86,7 @@
 
 
 \newcommand{\Norm}{\mathcal{N}}
-\newcommand{\pdf}{p(|)}
+\newcommand{\argmax}{\text{argmax}}
 
 
 \newcommand{\bacc}{ Fortgeschrittene Programmierung \\ in der Physik SE}
@@ -107,7 +107,7 @@
     Computational Physics\\
     
     \vspace{5cm}
-    {\huge\sc Introduction to Baysian Neural Networks with NumPyro} \par
+    {\huge\sc Introduction to Baysian Neural Networks with examples in Physics and Engineering} \par
     Advisor: \\ Univ.-Prof. Dipl.-Phys. Dr. Wolfgang von der Linden \\ 
     \vspace{5cm}
     
@@ -122,15 +122,142 @@
 \section{Introduction}
 In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown.
 \section{Mathematical basics}
+\subsection{Baysian Neural Networks}
+A Baysian Neural Network is a Neural Network with stochastic features, like probability distributions for the weights or for the activation functions \cite{BNNTut}. For training general Neural Networks, one maximizes the likelihood $p(\mathcal{D}|\bm \theta)$ to obtain a point estimate $\bm \theta^*$:
 \begin{equation}
+    \bm \theta^* = \argmax_{\bm{\theta}} p(\mathcal{D}|\bm \theta)
+\end{equation}
+The training of the BNN on the other hand, is done by calculating the posterior distribution of the parameters $p(\bm \theta | \mathcal{D}$), given the training data $\mathcal D$. This posterior is given by Bayes rule:
+\begin{equation} \label{eq:post_params}
     p(\bm \theta|\mathcal{D}) = \frac{p(\mathcal{D}|\bm \theta)p(\bm \theta)}{\int_{\theta'}p(\mathcal{D}|\bm \theta')p(\bm \theta')}
 \end{equation}
-\begin{equation}
-    p(\bm f( \bm x_*) |\bm X, \bm Y ) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta
-\end{equation}
-\subsection{Baysian Neural Networks}
-Priors over wheigts, baysian inference, uncertainty quatification sigma somehow makes the model underfit. Even when choosing extreme priors it falls into weird positons. very data hungry
+with the likelihood $p(\mathcal{D}|\bm \theta)$, the prior for the parameters $p(\bm \theta)$ and the integral for the evidence $\int_{\theta'}p(\mathcal{D}|\bm \theta')p(\bm \theta')$. This integral over all possible parametrizations of the Network is, most of the time, intractable due to its high dimensionality, which is especially true for deep Neural Networks. Therefore, we need to somehow approximate this posterior distribution. There are several methods for doing inference, e.g \textit{Monte Carlo dropout, Markov Chain Monte Carlo, Laplace approximation, Variational Inference, Deep ensembles} etc. \cite{murphy}. In this report, the focus will be on two inference methods, which are arguably the most robust and widely used algorithms for BNNs \cite{BNNTut}:
+\begin{itemize}
+    \item Markov Chain Monte Carlo
+    \item Variational Inference
+\end{itemize}
+\subsection{Markov Chain Monte Carlo}
+A very strong quality of \textit{MCMC} methods is that they do not restrict or assume the form of the posterior, which we will later see, has to be done when using variational methods. \textit{MCMC} is especially a good choice, when the Network is rather thin with a small number of neurons and layers. This is because \textit{MCMC} does not scale that well when the dimension of the parameters greatly increases. However, efforts have been made for adapting \textit{MCMC} for bigger BNNs \cite{murphy}. Later on, this behaviour will be shown by specific examples. Another drawback is that the whole training set has to be used, and therefore kept in memory, for every training step. This further limits the capabilities for big datasets and deep Networks.\\
+\textit{NumPyro} allows a very simple and clear syntax for defining and doing inference with \textit{MCMC}. In this example we use the so called NUTS algorithm, which is a variant of Hamilton Monte Carlo \cite{Brooks_2011, hoffman2011nouturnsampleradaptivelysetting}.
+\begin{lstlisting}
+from numpyro.infer import NUTS, MCMC
+#define pseudo random number generator key
+inf_key = jax.random.PRNGKey(0)
+#define mcmc with the NUTS sampler, the network and the number of samples
+mcmc = MCMC(NUTS(BNN_model), num_warmup=1000, num_samples=1000)
+#running inference with the training data 
+mcmc.run(inf_key, X_train, Y_train, LAYERS)
+mcmc.print_summary()
+\end{lstlisting}
+After running the inference, the summary gives an overview of the calculated samples for the parameters of the network.
+\begin{lstlisting}
+sample: 100%|██████████| 2000/2000 [04:36<00:00,  7.23it/s, 1023 steps of size 6.49e-04. acc. prob=0.93]
+
+                             mean       std    median      5.0%     95.0%     n_eff     r_hat
+                W0[0,0]     -0.06      0.98      0.06     -1.71      1.31     12.27      1.10
+                W0[0,1]     -0.14      0.82     -0.11     -1.71      1.05     33.64      1.10
+                W0[0,2]     -0.03      0.84     -0.09     -1.29      1.37     25.33      1.21
+                W0[0,3]     -0.04      0.92     -0.03     -1.66      1.33     15.52      1.10
+                W0[0,4]     -0.24      0.72     -0.22     -1.44      0.90     27.59      1.06
+                W0[0,5]      0.12      0.95      0.10     -1.46      1.72     40.72      1.06
+                W0[0,6]      0.14      0.67      0.10     -0.96      1.27     61.09      1.00
+                W0[0,7]      0.22      0.95      0.13     -1.22      1.88     25.26      1.01
+                W0[0,8]     -0.17      0.89     -0.15     -1.70      1.17     29.00      1.03
+                W0[0,9]     -0.05      0.79     -0.03     -1.42      1.24     38.40      1.05
+               W0[0,10]      0.06      0.86      0.04     -1.46      1.43     13.57      1.13
+               W0[0,11]      0.20      0.88      0.23     -1.10      1.85     30.89      1.05
+               W0[0,12]      0.16      0.87      0.23     -1.37      1.62     32.36      1.12
+               W0[0,13]      0.03      0.95     -0.05     -1.56      1.59     24.91      1.00
+               W0[0,14]     -0.04      0.84     -0.00     -1.61      1.15     17.90      1.00
+               W0[0,15]     -0.02      0.83      0.02     -1.58      1.17     29.68      1.06
+               W0[0,16]      0.11      0.96      0.16     -1.54      1.53     38.61      1.00
+               W0[0,17]     -0.00      0.91      0.09     -1.52      1.43     45.45      1.04
+               W0[0,18]      0.15      0.98      0.15     -1.15      2.07     21.78      1.17
+               W0[0,19]     -0.02      0.88     -0.02     -1.44      1.63     28.92      1.01
+               W0[0,20]      0.09      0.99      0.05     -1.69      1.74     26.98      1.13
+               W0[0,21]      0.02      0.72     -0.05     -0.96      1.42     39.72      1.08
+               W0[0,22]      0.10      1.03     -0.05     -1.48      1.88     30.80      1.13
+...
+                  b2[0]      0.26      0.94      0.29     -1.18      1.81     34.99      1.01
+  observation precision     44.33      6.95     44.19     34.01     56.20     14.91      1.08
+
+Number of divergences: 2
+\end{lstlisting}
+
 \subsection{Variational Inference}
+There are different strageties or methods for doing variational inference. Here we just want to go over the basic idea and maths behind VI. The general idea 
+\begin{lstlisting}
+from numpyro.infer.autoguide import AutoDiagonalNormal, AutoLaplaceApproximation, AutoMultivariateNormal, AutoIAFNormal, AutoLowRankMultivariateNormal, AutoDelta
+#define the 
+guide = AutoDiagonalNormal(BNN_model)
+
+svi = SVI(
+    wideband_dnn, guide, numpyro.optim.Adam(0.05), Trace_ELBO()
+)
+
+svi_result = svi.run(
+    jax.random.PRNGKey(0),
+    num_steps=3000,
+    X=X_train,
+    Y=Y_train,
+    layers=LAYERS
+)
+\end{lstlisting}
+\subsection{Predictive distribution}
+After having obtained samples, or a variational approximation of the posterior $p(\bm \theta|\mathcal{D})$, predictions at unseen test points $\bm x_*$ can be made. For this we have to formulate a distribution $p(f(\bm x_*|\mathcal{D})$, which is obtained by marginalization of the calculated parameters $\bm \theta$:
+\begin{equation}
+    p(\bm f( \bm x_*) |\mathcal{D}) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta = \mathbb{E}_{p(\theta|\mathcal{D}} \left[ p(\bm f ({\bm x_*})|\bm \theta )\right]
+\end{equation}
+Writing the integral in terms of an conditional expectation of the posterior distribution of $\bm \theta$, yields an interesting view of the marginalized distribution. 
+\subsection{Physics informed Baysian Neural Network}
+In this section, the baysian equivalence of a PINN, a so called B-PINN \cite{Yang_2021}, is quickly introduced and later on used for a simple example. \\
+For PINNs the loss function $\mathcal{L}$ is augmented with an additional physics term:
+\begin{equation}
+    \mathcal{L}(\bm \theta) = \mathcal{L}_{data} + \mathcal{L}_{physics}
+\end{equation}
+This physics loss is oftentimes defined through a differential equation:
+\begin{equation}
+    \mathcal{P}_\phi u(\bm x) = f(\bm x)
+\end{equation}
+with $\mathcal{P}_\phi$ being a parametric differential operator with parameters $\phi$, $u$ the solution of the differential equation and $f$ the forcing term. Lets assume that we have a data set $\mathcal{D}$ consisting of noisy observations of both $u$ and $f$ $\{(\bm{x_u});\bm{y_u}\}$ and $\{(\bm{x_f});\bm{y_f}\}$ with $\bm{y_i} = u(\bm{x_i}) + \mathcal{N}(\bm{0}|\sigma_{ni}^2 I) ; \; i = u,f$. The solution term $u$ is now parameterized with a Neural Network $\Tilde{u}$:
+\begin{equation}
+    \mathcal{P}_\phi \Tilde{u}(\bm x; \bm \theta) = f(\bm x)
+\end{equation}
+Since we are working with libraries that have access to automatic differentiation, the derivative of $\Tilde{u}$, and therefore the forcing term $f$ can be calculated directly:
+\begin{equation}
+    \Tilde{f}(\bm x;\bm \theta, \phi) = \mathcal{P}_\phi \Tilde{u}(\bm x; \bm \theta))
+\end{equation}
+Since we have observations for both the $u$ and $f$ we can calculate the residuals for both, which leads to our two loss terms:
+\begin{equation}
+    \mathcal{L}(\bm \theta) = \mathcal{L}_{data}(\Tilde{u}; \bm \theta) + \lambda \mathcal{L}_{physics}(\Tilde{f}(\theta))
+\end{equation}
+were $\mathcal{L}$ would e.g be the MSE.\\
+To formulate this in terms of baysian NN, the posterior is augmented with the additional likelihood for the function $f$:
+\begin{equation} \label{eq:post_params_BPINN}
+    p(\bm \theta, \phi|\mathcal{D}_u, \mathcal{D}_f) = \frac{p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta, \phi)p(\bm \theta)p(\phi)}{\int_{\theta'}p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta')p(\bm \theta')}
+\end{equation}
+with the prior distribution for the parameters of the differential equation. If the parameters $\phi$ are a-priori unknown, they can be assigned a prior function $p(phi)$ and then be learned directly through inference \cite{raissi2017physicsIDL, Yang_2021}.
+\begin{lstlisting}
+def physics_forward(
+        W: List[jax.Array],
+        b: List[jax.Array],
+        X: jax.Array,
+        activation: Callable,
+):
+    #input layer
+    u = partial(forward, W, b, activation=activation)
+    u_prime = jax.grad(u)
+    u_double_prime = jax.grad(u_prime)
+
+    #vectorize the functions
+    u_prime = jax.vmap(u_prime)(X)
+    u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
+    return u_prime, u_double_prime[:, None]
+\end{lstlisting}
+\\
+    
+Priors over wheigts, baysian inference, uncertainty quatification sigma somehow makes the model underfit. Even when choosing extreme priors it falls into weird positons. very data hungry
+
 
 
 \section{Setting up the model}
@@ -241,17 +368,7 @@ def predict_new(
 \section{Numerical examples}
 maybe normal NN against BNN\\
 transistor data, oscillator data
-\subsection{Damped Oscillator}
-\begin{equation}
-    \begin{aligned}
-    {\displaystyle {\begin{cases}
-        m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t) \\ u(0) = 0, \; \frac{\partial u(t)}{\partial t} = 0\end{cases}}}
-    \end{aligned}
-\end{equation}
 
-\begin{equation}
-    f(t) = 4 \sin(2\pi t)
-\end{equation}
 \subsection{Transistor surrogate model/Transformer model akash}
 Here the data set consists of an inputs $ \bm x$, which specify the circuit layout and of the envelope of the fourier transformed output of the simulation data $\bm y$ over a specified frequency range.
 \begin{align}
@@ -268,7 +385,7 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
         \bm y_N^T
     \end{bmatrix}
 \end{align}
-with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range.
+with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. In this application the goal is to define a surrogate model for the transformer
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
@@ -282,9 +399,24 @@ with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we 
     \label{fig:training_samples}
 \end{figure}
 \section{Code}
-\lstinputlisting[caption={Example Python Code}, label={lst:examplecode}, firstline=10, lastline=30]{../code/transformer_surrogate.ipynb}
-\cite{alvarez2012kernels} \cite{raissi2017physicsIDL}
+%\lstinputlisting[caption={Example Python Code}, label={lst:examplecode}, firstline=10, lastline=30]{../code/transformer_surrogate.ipynb}
 
+\subsection{Damped Oscillator}
+\begin{equation}
+    \begin{aligned}
+    {\displaystyle {\begin{cases}
+        m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t) \\ u(0) = 0, \; \frac{\partial u(t)}{\partial t} = 0\end{cases}}}
+    \end{aligned}
+\end{equation}
+\begin{equation}
+    f(t) = 4 \sin(2\pi t)
+\end{equation}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
+    \caption{Samples from the training data for frequency domain}
+    \label{fig:training_samples}
+\end{figure}
 \newpage
 \printbibliography
 

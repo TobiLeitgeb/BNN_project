@@ -159,9 +159,9 @@ def sample_training_points_space_filling(
     
     # Sample from the arrays using the Sobol sequence indices
     X_samples_1 = X[indices_1] 
-    Y_1_samples = Y_1[indices_1] + jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * 1e-2
+    Y_1_samples = Y_1[indices_1] + jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * noise_levels[0]
     X_samples_2 = X[indices_2]
-    Y_2_samples = Y_2[indices_2]+ jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * 1e-2
+    Y_2_samples = Y_2[indices_2]+ jr.normal(jr.PRNGKey(seed), shape=(num_samples, )) * noise_levels[1]
     
     # test set without the training points
 

@@ -1,0 +1,28 @@
+digraph {
+	W0 [label=W0 fillcolor=white shape=ellipse style=filled]
+	b0 [label=b0 fillcolor=white shape=ellipse style=filled]
+	W1 [label=W1 fillcolor=white shape=ellipse style=filled]
+	b1 [label=b1 fillcolor=white shape=ellipse style=filled]
+	W2 [label=W2 fillcolor=white shape=ellipse style=filled]
+	b2 [label=b2 fillcolor=white shape=ellipse style=filled]
+	m [label=m fillcolor=white shape=ellipse style=filled]
+	gamma [label=gamma fillcolor=white shape=ellipse style=filled]
+	k [label=k fillcolor=white shape=ellipse style=filled]
+	Y_u [label=Y_u fillcolor=grey shape=ellipse style=filled]
+	Y_f [label=Y_f fillcolor=grey shape=ellipse style=filled]
+	W0 -> Y_u
+	b0 -> Y_u
+	W1 -> Y_u
+	b1 -> Y_u
+	W2 -> Y_u
+	b2 -> Y_u
+	W0 -> Y_f
+	b0 -> Y_f
+	W1 -> Y_f
+	b1 -> Y_f
+	W2 -> Y_f
+	b2 -> Y_f
+	m -> Y_f
+	gamma -> Y_f
+	k -> Y_f
+}

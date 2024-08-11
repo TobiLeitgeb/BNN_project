@@ -244,12 +244,49 @@ Since we have observations for both the $u$ and $f$ we can calculate the residua
 \begin{equation}
     \mathcal{L}(\bm \theta) = \mathcal{L}_{data}(\Tilde{u}; \bm \theta) + \lambda \mathcal{L}_{physics}(\Tilde{f}(\theta))
 \end{equation}
-were $\mathcal{L}$ would e.g be the MSE.\\
+were $\mathcal{L}$ would e.g be the MSE.
+\begin{lstlisting}[caption= {Physics Informed Neural Net},captionpos=t]
+def physics_forward(
+        W: List[jax.Array],
+        b: List[jax.Array],
+        X: jax.Array,
+        activation: Callable,
+):
+    #input layer
+    u = partial(forward, W, b, activation=activation)
+    u_prime = jax.grad(u)
+    u_double_prime = jax.grad(u_prime)
+
+    #vectorize the functions
+    u_prime = jax.vmap(u_prime)(X)
+    u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
+    return u_prime, u_double_prime[:, None]
+\end{lstlisting}
+\\
 To formulate this in terms of baysian NN, the posterior is augmented with the additional likelihood for the function $f$:
 \begin{equation} \label{eq:post_params_BPINN}
     p(\bm \theta, \phi|\mathcal{D}_u, \mathcal{D}_f) = \frac{p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta, \phi)p(\bm \theta)p(\phi)}{\int_{\theta'}p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta')p(\bm \theta')}
 \end{equation}
 with the prior distribution for the parameters of the differential equation. If the parameters $\phi$ are a-priori unknown, they can be assigned a prior function $p(\phi)$ and then be learned directly through inference \cite{raissi2017physicsIDL, Yang_2021}.
+The joint likelihood can be implemented in \textit{NumPyro} as:
+\begin{lstlisting}[caption={Joint likelihood for B-PINN},captionpos=t]
+z = forward(W, b, X_u, activation)[:, None]
+dz, ddz = physics_forward(W, b, X_f, activation)
+f = m * ddz + gamma * dz + k * z
+
+#joint likelihood
+numpyro.sample(
+    r"Y_u", 
+    dist.Normal(z, sigma_obs_u).to_event(1), 
+    obs=Y_u
+)
+numpyro.sample(
+    r"Y_f", 
+    dist.Normal(f, sigma_obs_f).to_event(1), 
+    obs=Y_f
+)
+\end{lstlisting} 
+
 
 \\
     
@@ -280,10 +317,11 @@ since there was very poor performance without the normalization. This is necessa
 \begin{equation}
     \hat{y}_i = \hat{y}_{i,\text{normalized}} \cdot {\sigma_{\bm Y}} + \mu_{\bm Y}
 \end{equation}
-For the BNN we also need a forward pass just as for standard feed-forward neural networks, which can be written as:
+For the feed-forward BNN we can also define a forward pass, which can be written as:
 \begin{equation}
     \bm f(\bm x|\bm \theta) = \sum_i w^{(L)}_{ji} \left( \ldots \phi \left( \sum_k w^{(1)}_{mk}x_k + \bm b^{(1)} \right) \right) + \bm b^{(L)}
 \end{equation}
+After having obtained the samples through inference, the forward pass is the same as for a standard feed-forward neural networks
 In \textit{JAX} this can be implemented as:
 \begin{lstlisting}[caption= {Feed forward Neural Network},captionpos=t]
 def forward(
@@ -303,25 +341,9 @@ def forward(
     z = jnp.dot(z, W[-1]) + b[-1]
     return z.squeeze()
 \end{lstlisting} 
-\begin{lstlisting}[caption= {Physics Informed Neural Net},captionpos=t]
-def physics_forward(
-        W: List[jax.Array],
-        b: List[jax.Array],
-        X: jax.Array,
-        activation: Callable,
-):
-    #input layer
-    u = partial(forward, W, b, activation=activation)
-    u_prime = jax.grad(u)
-    u_double_prime = jax.grad(u_prime)
-
-    #vectorize the functions
-    u_prime = jax.vmap(u_prime)(X)
-    u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
-    return u_prime, u_double_prime[:, None]
-\end{lstlisting}
-\begin{lstlisting}
-def wideband_dnn(
+With this forward pass and the priors for the parameters $\theta$, the whole model can be set up as a relativly easy function:
+\begin{lstlisting}[caption={NumPyro model for baysian deep neural network},captionpos=t]
+def BNN_model(
         X: jax.Array,
         Y: jax.Array,
         layers: List[int],
@@ -349,7 +371,7 @@ def wideband_dnn(
             obs=Y
         )
 \end{lstlisting}
-The general from of a feed-forward Neural Network
+When using Variational inference for the inference of the posterior of the parameters, there are no direct samples for parameters. Therefore, the trained variational distribution $q$ (called guide here) has to be used to sample $\bm \theta$:
 For predicting new values at $\bm x_*$, we draw samples from the trained variational distribution $q_\theta $
 \begin{lstlisting}
 def predict_new(
@@ -363,13 +385,13 @@ def predict_new(
     )-> Tuple:
     
     sample_key, prediction_key = jr.split(key, 2)
-    #sample from the trained guide
+    #sample from the trained guide q_phi(theta)
     samples = guide.sample_posterior(
         sample_key, svi_result.params, sample_shape=(num_samples, )
     )
     #define predictive distribution with samples and the model.
     predictive_distribution = Predictive(
-        wideband_dnn, samples, return_sites=["Y"]
+        BNN_model, samples, return_sites=["Y"]
     )
     #sample from the predictive distribution given new test points
     predictions = predictive_distribution(
@@ -382,9 +404,6 @@ def predict_new(
 \end{lstlisting}
 
 \section{Numerical examples}
-maybe normal NN against BNN\\
-transistor data, oscillator data
-
 \subsection{Transistor surrogate model/Transformer model akash}
 Here the data set consists of an inputs $ \bm x$, which specify the circuit layout and of the envelope of the fourier transformed output of the simulation data $\bm y$ over a specified frequency range.
 \begin{align}
@@ -401,7 +420,10 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
         \bm y_N^T
     \end{bmatrix}
 \end{align}
-with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. In this application the goal is to define a surrogate model for the transformer
+with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\bm x_i$ is the design vector for the circuit, with the parameters which are beeing adapted. For this example we have:
+\begin{equation}
+    x_i = [...]
+\end{equation}Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. In this application the goal is to define a surrogate model for the transformer LT spice model. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions.
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
@@ -414,38 +436,53 @@ with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we 
     \caption{Calculated posteriors for test samples. With mean function and 95 \% confidence interval.}
     \label{fig:training_samples}
 \end{figure}
-\section{Code}
-%\lstinputlisting[caption={Example Python Code}, label={lst:examplecode}, firstline=10, lastline=30]{../code/transformer_surrogate.ipynb}
-
 \subsection{Damped Oscillator}
-\begin{equation}
-    \begin{aligned}
-    {\displaystyle {\begin{cases}
-        m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t) \\ u(0) = 0, \; \frac{\partial u(t)}{\partial t} = 0\end{cases}}}
-    \end{aligned}
-\end{equation}
+Let's consider a one-dimensional differential equation that models a damped oscillator, characterized by a mass $ m $, damping coefficient $ \gamma $, force constant $k$, and initial conditions. The equation governing the system is:
+
+\begin{align}
+    & m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t), \\
+    & u(0) = 0, \quad \frac{\partial u(t)}{\partial t}\bigg|_{t=0} = 0
+\end{align}
+The specific case we're examining uses the parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \), with a sinusoidal external force described by:
 \begin{equation}
     f(t) = 4 \sin(2\pi t)
 \end{equation}
+For the data, a noise level of $\sigma_{\text{nu}} = 0.01$ and $\sigma_{\text{nf}} = 0.5$ was introduced, effectively creating noise-free data. The result was computed over the time interval \( t \in [0,3] \), from which the training points were sampled using a sobol sequence. 
+
+\subsubsection{General feed forward BNN}
+
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/bnn_oscilator1.png}
-    \caption{Samples from the training data for frequency domain}
+    \includegraphics[width=0.6\textwidth]{plots/BNN/oscilator1_50_[20, 20, 1].png}
+    \caption{Samples from the training data for frequency domain 20  0.09223274}
     \label{fig:training_samples}
 \end{figure}
+\subssubection{B-PINN}
 
 \begin{figure}[htbp!]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/bnn_oscilator1_pinn.png}
+    \includegraphics[width=0.6\textwidth]{plots/BPINN/oscilator1_50_[20, 20, 1].png}
+    \caption{Samples from the training data for frequency domain relative L2 error relL2(u, u_hat):  0.07171381
+relative L2 error relL2(f, f_hat):  0.2000248 0.01 0.4}
+    \label{fig:training_samples}
+\end{figure}
+\begin{figure}[htbp!]
+    \centering
+    \includegraphics[width=0.6\textwidth]{plots/BPINN/params_oscilator1_50_[20, 20, 1].png}
     \caption{Samples from the training data for frequency domain}
     \label{fig:training_samples}
 \end{figure}
 \newpage
+\printbibliography
+\newpage
 \begin{appendices}
 \section{Source Code}
+\lstinputlisting[]{../code/network_functions.py}
+\lstinputlisting[]{../code/oscillator.py}
+\lstinputlisting[]{../code/B-PINN_oscillator.py}
 \lstinputlisting[]{../code/utils.py}
 \end{appendices}
 
-\printbibliography
+
 
 \end{document}

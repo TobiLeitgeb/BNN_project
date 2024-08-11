@@ -120,7 +120,7 @@
     \end{center}
     \end{titlepage}
 \section{Introduction}
-In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown.
+In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. Additionally, there will be a short introduction to Baysian PINNs \cite{Yang_2021}. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown.
 \section{Mathematical basics}
 \subsection{Baysian Neural Networks}
 A Baysian Neural Network is a Neural Network with stochastic features, like probability distributions for the weights or for the activation functions \cite{BNNTut}. For training general Neural Networks, one maximizes the likelihood $p(\mathcal{D}|\bm \theta)$ to obtain a point estimate $\bm \theta^*$:
@@ -139,7 +139,7 @@ with the likelihood $p(\mathcal{D}|\bm \theta)$, the prior for the parameters $p
 \subsection{Markov Chain Monte Carlo}
 A very strong quality of \textit{MCMC} methods is that they do not restrict or assume the form of the posterior, which we will later see, has to be done when using variational methods. \textit{MCMC} is especially a good choice, when the Network is rather thin with a small number of neurons and layers. This is because \textit{MCMC} does not scale that well when the dimension of the parameters greatly increases. However, efforts have been made for adapting \textit{MCMC} for bigger BNNs \cite{murphy}. Later on, this behaviour will be shown by specific examples. Another drawback is that the whole training set has to be used, and therefore kept in memory, for every training step. This further limits the capabilities for big datasets and deep Networks.\\
 \textit{NumPyro} allows a very simple and clear syntax for defining and doing inference with \textit{MCMC}. In this example we use the so called NUTS algorithm, which is a variant of Hamilton Monte Carlo \cite{Brooks_2011, hoffman2011nouturnsampleradaptivelysetting}.
-\begin{lstlisting}
+\begin{lstlisting}[caption= {Inference with NUTS},captionpos=t]
 from numpyro.infer import NUTS, MCMC
 #define pseudo random number generator key
 inf_key = jax.random.PRNGKey(0)
@@ -149,8 +149,8 @@ mcmc = MCMC(NUTS(BNN_model), num_warmup=1000, num_samples=1000)
 mcmc.run(inf_key, X_train, Y_train, LAYERS)
 mcmc.print_summary()
 \end{lstlisting}
-After running the inference, the summary gives an overview of the calculated samples for the parameters of the network.
-\begin{lstlisting}
+After running the inference, the summary gives an overview of the calculated samples for the parameters of the network:
+\begin{lstlisting}[caption= {Results of Inference with HMC},captionpos=t]
 sample: 100%|██████████| 2000/2000 [04:36<00:00,  7.23it/s, 1023 steps of size 6.49e-04. acc. prob=0.93]
 
                              mean       std    median      5.0%     95.0%     n_eff     r_hat
@@ -168,15 +168,6 @@ sample: 100%|██████████| 2000/2000 [04:36<00:00,  7.23it/s, 
                W0[0,11]      0.20      0.88      0.23     -1.10      1.85     30.89      1.05
                W0[0,12]      0.16      0.87      0.23     -1.37      1.62     32.36      1.12
                W0[0,13]      0.03      0.95     -0.05     -1.56      1.59     24.91      1.00
-               W0[0,14]     -0.04      0.84     -0.00     -1.61      1.15     17.90      1.00
-               W0[0,15]     -0.02      0.83      0.02     -1.58      1.17     29.68      1.06
-               W0[0,16]      0.11      0.96      0.16     -1.54      1.53     38.61      1.00
-               W0[0,17]     -0.00      0.91      0.09     -1.52      1.43     45.45      1.04
-               W0[0,18]      0.15      0.98      0.15     -1.15      2.07     21.78      1.17
-               W0[0,19]     -0.02      0.88     -0.02     -1.44      1.63     28.92      1.01
-               W0[0,20]      0.09      0.99      0.05     -1.69      1.74     26.98      1.13
-               W0[0,21]      0.02      0.72     -0.05     -0.96      1.42     39.72      1.08
-               W0[0,22]      0.10      1.03     -0.05     -1.48      1.88     30.80      1.13
 ...
                   b2[0]      0.26      0.94      0.29     -1.18      1.81     34.99      1.01
   observation precision     44.33      6.95     44.19     34.01     56.20     14.91      1.08
@@ -185,8 +176,29 @@ Number of divergences: 2
 \end{lstlisting}
 
 \subsection{Variational Inference}
-There are different strageties or methods for doing variational inference. Here we just want to go over the basic idea and maths behind VI. The general idea 
-\begin{lstlisting}
+In variational inference the idea is to approximate the posterior distribution with a parameterized approximated distribution $q_\phi (\bm \theta)$. The parameters $\phi$ of this distribution are now optimized, such that they best describe the posterior. For this the Kullback-Liebler divergence is used as a measure of similarity between two probability distributions $p$ and $q$ \cite{murphy, BNNdistill}:
+\begin{equation}\label{eq:kullback}
+    d_{KL} [q(\bm \theta)|| p(\theta|\mathcal{D})] &= \int_{\bm \theta'} q_\phi(\bm \theta) \log \frac{q_\phi(\bm \theta)}{p(\bm \theta|\mathcal{D})} d\bm \theta\\
+    &=\mathbb{E}_{q_\phi(\bm \theta)}[\log(q_\phi(\bm \theta) - \log p(\bm \theta|\mathcal{D})]
+\end{equation}
+The optimization problem can then be formulated as \cite{murphy}:
+\begin{equation}\label{eq:optprob}
+    q = \arg \min_q d_{KL} [q(\bm \theta)|| p(\theta|\mathcal{D}]
+\end{equation}
+By this optimization, we can obtain the parameters $\phi$ of the variational distribution
+For solving this optimization problem, \eqref{eq:kullback} has to be rewritten, since the posterior cannot be directly computed. 
+\begin{align}
+    \phi &= \arg \min_\phi d_{KL} [q(\bm \theta)|| p(\theta|\mathcal{D}]\nunumber\\
+    &= \arg \min_\phi \mathbb{E}_{q_\phi(\bm \theta}[\log q_\phi(\bm \theta) - \log p(\bm \theta|\mathcal{D})]\nonumber\\
+    &= \arg \max_\phi \underbrace{\mathbb{E}_{q_\phi(\bm \theta}[\log p(\bm \theta, \mathcal{D}) - \log q_\phi(\bm \theta)]}_{\Tilde{\mathcal{L}}(\phi) = \text{ELBO}} + \log p(\mathcal{D)}\\
+\end{align}
+where the marginal data likelihood $p(\mathcal{D})$ can be left out for the optimization of $\phi$, since it does not depend on the variational parameters. Here the evidence lower bound (ELBO) is introduced. The name of the ELBO comes from the fact that it is the lower bound of the evidence $p(\mathcal{D})$, s.t. \cite{murphy}:
+\begin{equation}
+    \Tilde{\mathcal{L}}(\phi) = \mathbb{E}_{q_\phi(\bm \theta}[\log p(\bm \theta, \mathcal{D}) - \log q_\phi(\bm \theta)] \leq p(\mathcal{D})
+\end{equation}
+With this reformulation, the optimization of the variational parameters is reformulated as the maximization of the ELBO $\Tilde{\mathcal{L}}$ with respect to $\phi$. For actually doing this optimization, there are several methods. One of the most popular is \textit{Stochasitc Variationl inference} \cite{hoffman2013stochasticvariationalinference}. SVI generally works just like stochastic gradient ascent \cite{BNNTut} and comes with advantages like minibatching. Other methods are \textit{Bayes by backpropagation}, \textit{Laplace approximation} or \textit{Deep ensembles}.\\
+At last, we briefly want to demonstrate how to do VI in \textit{NumPyro}:
+\begin{lstlisting}[caption= {Inference with VI},captionpos=t]
 from numpyro.infer.autoguide import AutoDiagonalNormal, AutoLaplaceApproximation, AutoMultivariateNormal, AutoIAFNormal, AutoLowRankMultivariateNormal, AutoDelta
 #define the 
 guide = AutoDiagonalNormal(BNN_model)
@@ -205,10 +217,10 @@ svi_result = svi.run(
 \end{lstlisting}
 \subsection{Predictive distribution}
 After having obtained samples, or a variational approximation of the posterior $p(\bm \theta|\mathcal{D})$, predictions at unseen test points $\bm x_*$ can be made. For this we have to formulate a distribution $p(f(\bm x_*|\mathcal{D})$, which is obtained by marginalization of the calculated parameters $\bm \theta$:
-\begin{equation}
-    p(\bm f( \bm x_*) |\mathcal{D}) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta = \mathbb{E}_{p(\theta|\mathcal{D}} \left[ p(\bm f ({\bm x_*})|\bm \theta )\right]
+\begin{equation}\label{eq:predictivedist}
+    p(\bm f( \bm x_*) |\mathcal{D}) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta = \mathbb{E}_{p(\theta|\mathcal{D})} \left[ p(\bm f ({\bm x_*})|\bm \theta )\right]
 \end{equation}
-Writing the integral in terms of an conditional expectation of the posterior distribution of $\bm \theta$, yields an interesting view of the marginalized distribution. 
+Writing the integral in terms of an conditional expectation of the posterior distribution of $\bm \theta$, gives an interesting view of the marginalized distribution, as the exptectation value of a single neural net output wheighted by the posterior ditribution of the parameters given the training data. In \cite{blundell2015weightuncertaintyneuralnetworks} this is described as an \textit{infinite ensenmble} of Neural Networks. In practice we can not calculate an infinite number of networks. However when having obtained enough iid. samples (monte carlo samples) of the posterior distribution $p(\bm \theta|\mathcal{D})$, the expectation value in \eqref{eq:predictivedist} can be approximated. Generating samples of the posterior is slightly different for the two inference algorithms discussed above. When using MCMC, ($\approx$ independent) samples of the posterior are obtained directly. For every sample $\bm \theta_i$, which is a set of parameters, the networks output $p(\bm f(\bm x_*)|\bm \theta_i)$ is computed. We now approximate the expectation value by taking the mean over all the samples. When using VI the process is nearly the same. After having obtained the trained variational distribution $q$, we can sample from that distribution and again do the same thing as described above with the samples. 
 \subsection{Physics informed Baysian Neural Network}
 In this section, the baysian equivalence of a PINN, a so called B-PINN \cite{Yang_2021}, is quickly introduced and later on used for a simple example. \\
 For PINNs the loss function $\mathcal{L}$ is augmented with an additional physics term:
@@ -227,6 +239,7 @@ Since we are working with libraries that have access to automatic differentiatio
 \begin{equation}
     \Tilde{f}(\bm x;\bm \theta, \phi) = \mathcal{P}_\phi \Tilde{u}(\bm x; \bm \theta))
 \end{equation}
+with $ \Tilde{f}$ as the 
 Since we have observations for both the $u$ and $f$ we can calculate the residuals for both, which leads to our two loss terms:
 \begin{equation}
     \mathcal{L}(\bm \theta) = \mathcal{L}_{data}(\Tilde{u}; \bm \theta) + \lambda \mathcal{L}_{physics}(\Tilde{f}(\theta))
@@ -236,24 +249,8 @@ To formulate this in terms of baysian NN, the posterior is augmented with the ad
 \begin{equation} \label{eq:post_params_BPINN}
     p(\bm \theta, \phi|\mathcal{D}_u, \mathcal{D}_f) = \frac{p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta, \phi)p(\bm \theta)p(\phi)}{\int_{\theta'}p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta')p(\bm \theta')}
 \end{equation}
-with the prior distribution for the parameters of the differential equation. If the parameters $\phi$ are a-priori unknown, they can be assigned a prior function $p(phi)$ and then be learned directly through inference \cite{raissi2017physicsIDL, Yang_2021}.
-\begin{lstlisting}
-def physics_forward(
-        W: List[jax.Array],
-        b: List[jax.Array],
-        X: jax.Array,
-        activation: Callable,
-):
-    #input layer
-    u = partial(forward, W, b, activation=activation)
-    u_prime = jax.grad(u)
-    u_double_prime = jax.grad(u_prime)
+with the prior distribution for the parameters of the differential equation. If the parameters $\phi$ are a-priori unknown, they can be assigned a prior function $p(\phi)$ and then be learned directly through inference \cite{raissi2017physicsIDL, Yang_2021}.
 
-    #vectorize the functions
-    u_prime = jax.vmap(u_prime)(X)
-    u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
-    return u_prime, u_double_prime[:, None]
-\end{lstlisting}
 \\
     
 Priors over wheigts, baysian inference, uncertainty quatification sigma somehow makes the model underfit. Even when choosing extreme priors it falls into weird positons. very data hungry
@@ -267,7 +264,7 @@ A very default prior for the parameters of the BNN which has proven to work rela
     \bm b \thicksim \mathcal{N}(\bm 0, \bm I)
 \end{align}
 where we just use two normal distributions as priors for the wheigts and biases. In the used probabilistic framework NumPyro we can define the priors the following way:
-\begin{lstlisting}
+\begin{lstlisting}[caption= {Setting up priors for wheits},captionpos=t]
     W = numpyro.sample(f"W{i}", dist.Normal(0, 1).expand(n_in, n_out))
     b = numpyro.sample(f"b{i}", dist.Normal(0, 1).expand((n_out, )))
 \end{lstlisting}
@@ -279,15 +276,16 @@ Here $\bm W_i$ and $\bm b_i$ are the corresponding parameters for the i-th layer
 \begin{equation}
      y_{i, \text{normalized}} = \frac{ y_i - \mu_{\bm Y}}{\sigma_{\bm Y}}
 \end{equation}
-since there was very poor performance without the normalization. For making predictions after training, the values are transformed back:
+since there was very poor performance without the normalization. This is necessary, since the priors of the weights are centered around 0 with a variance of 1. Without normalizing the data, one could run into problems getting valid results. For making predictions after training, the values are transformed back:
 \begin{equation}
     \hat{y}_i = \hat{y}_{i,\text{normalized}} \cdot {\sigma_{\bm Y}} + \mu_{\bm Y}
 \end{equation}
+For the BNN we also need a forward pass just as for standard feed-forward neural networks, which can be written as:
 \begin{equation}
     \bm f(\bm x|\bm \theta) = \sum_i w^{(L)}_{ji} \left( \ldots \phi \left( \sum_k w^{(1)}_{mk}x_k + \bm b^{(1)} \right) \right) + \bm b^{(L)}
 \end{equation}
-
-\begin{lstlisting}
+In \textit{JAX} this can be implemented as:
+\begin{lstlisting}[caption= {Feed forward Neural Network},captionpos=t]
 def forward(
         W: List[jax.Array],
         b: List[jax.Array],
@@ -304,7 +302,25 @@ def forward(
     #output layer with no activation
     z = jnp.dot(z, W[-1]) + b[-1]
     return z.squeeze()
-    
+\end{lstlisting} 
+\begin{lstlisting}[caption= {Physics Informed Neural Net},captionpos=t]
+def physics_forward(
+        W: List[jax.Array],
+        b: List[jax.Array],
+        X: jax.Array,
+        activation: Callable,
+):
+    #input layer
+    u = partial(forward, W, b, activation=activation)
+    u_prime = jax.grad(u)
+    u_double_prime = jax.grad(u_prime)
+
+    #vectorize the functions
+    u_prime = jax.vmap(u_prime)(X)
+    u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
+    return u_prime, u_double_prime[:, None]
+\end{lstlisting}
+\begin{lstlisting}
 def wideband_dnn(
         X: jax.Array,
         Y: jax.Array,
@@ -386,16 +402,16 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
     \end{bmatrix}
 \end{align}
 with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. In this application the goal is to define a surrogate model for the transformer
-\begin{figure}[h]
+\begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
-    \caption{Samples from the training data for frequency domain}
+    \caption{Training samples $\bm Y_i$ plotted over the frequency domain. One line is the frequency response for a circuit parameterized by the respective $\bm X_i$.}
     \label{fig:training_samples}
 \end{figure}
-\begin{figure}[h]
+\begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/prediction_transformer.png}
-    \caption{Samples from the training data for frequency domain}
+    \caption{Calculated posteriors for test samples. With mean function and 95 \% confidence interval.}
     \label{fig:training_samples}
 \end{figure}
 \section{Code}
@@ -413,11 +429,23 @@ with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. Therefore, we 
 \end{equation}
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
+    \includegraphics[width=0.6\textwidth]{plots/bnn_oscilator1.png}
+    \caption{Samples from the training data for frequency domain}
+    \label{fig:training_samples}
+\end{figure}
+
+\begin{figure}[htbp!]
+    \centering
+    \includegraphics[width=0.6\textwidth]{plots/bnn_oscilator1_pinn.png}
     \caption{Samples from the training data for frequency domain}
     \label{fig:training_samples}
 \end{figure}
 \newpage
+\begin{appendices}
+\section{Source Code}
+\lstinputlisting[]{../code/utils.py}
+\end{appendices}
+
 \printbibliography
 
 \end{document}

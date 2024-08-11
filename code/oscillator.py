@@ -18,7 +18,7 @@ import seaborn as sns
 from functools import partial
 
 from utils import sample_training_points_space_filling
-from network_functions import dense_layer, forward
+from network_functions import dense_layer, forward, relative_l2_error
 
 from typing import Tuple, List, Callable
 import sys
@@ -26,7 +26,7 @@ sys.path.append("../")
 
 sns.set_theme("paper", font_scale=1.5)
 
-NOISE_LEVELS = (0.1, 0.6)
+NOISE_LEVELS = (0.01, 0.6)
 
 def bnn_model(
         X: jax.Array,
@@ -49,9 +49,9 @@ def bnn_model(
     if Y is not None:
         assert Y.shape == z.shape , f"Y shape {Y.shape} does not match z shape {z.shape}"
 
-    precision_obs = numpyro.sample(r"observation precision", dist.Gamma(2., 1.))
-    sigma_obs = 1.0 / jnp.sqrt(precision_obs)   
-    sigma_obs = 0.1
+    #precision_obs = numpyro.sample(r"observation precision", dist.HalfCauchy(1.0))
+    #sigma_obs = 1.0 / jnp.sqrt(precision_obs)   
+    sigma_obs = NOISE_LEVELS[0]
     with numpyro.plate("data", N):
         numpyro.sample(
             "Y", 
@@ -68,7 +68,9 @@ def main(
     X, Y, Y_f = data['X'], data['Y'], data['Y_f']
    
     # Sample training points
-    X_train, Y_train, _, _, X_test, y_test, _ = sample_training_points_space_filling(X, Y, Y_f, 50, seed=0)
+    X_train, Y_train, _, _, X_test, y_test, _ = sample_training_points_space_filling(
+                                                    X, Y, Y_f, data_size, seed=0, noise_levels=NOISE_LEVELS
+                                                )
     #normalize the training data
     mean_y = jnp.mean(Y_train)
     std_y = jnp.std(Y_train)
@@ -122,10 +124,13 @@ def main(
         (mean_prediction + 2 * stddev_prediction).flatten()*std_y + mean_y,
         color='g',
         alpha=0.4,
-        label=r"2\sigma uncertainty",
+        label=r"2\\sigma uncertainty",
     )
     plt.legend()   
     plt.savefig("plots/"+label+".png", dpi=300, bbox_inches='tight')
+
+    print("Plots saved in plots/ directory")
+    print("relative L2 error: ", relative_l2_error(y_test, mean_prediction*std_y + mean_y))
 
 import argparse
 if __name__ == "__main__":

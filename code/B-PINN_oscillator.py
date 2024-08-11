@@ -5,8 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr 
 import numpyro.distributions as dist
 
-from numpyro.infer import SVI, Trace_ELBO, Predictive
-from numpyro.optim import Adam
+from numpyro.infer import Predictive, NUTS, MCMC
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,10 +16,10 @@ from typing import Tuple, List, Callable
 import sys
 sys.path.append("../")
 from utils import sample_training_points_space_filling
-from network_functions import dense_layer, forward
+from network_functions import dense_layer, forward, relative_l2_error
 
 
-NOISE_LEVELS = (0.01, 0.6)
+NOISE_LEVELS = (0.01, 0.4)
 # forward pass through the physics network
 def physics_forward(
         W: List[jax.Array],
@@ -103,13 +102,8 @@ def main(
 
 # Sample training points
     X_u, u_train , X_f, f_train, X_test, u_test, f_test = sample_training_points_space_filling(
-                                                                                    X, 
-                                                                                    Y, 
-                                                                                    Y_f, 
-                                                                                    data_size, 
-                                                                                    noise_levels=NOISE_LEVELS,
-                                                                                    seed=0,
-                                                                                )
+                                                            X, Y, Y_f, data_size, noise_levels=NOISE_LEVELS,seed=0,
+                                                        )
 
     X_train = (X_u, X_f)
     Y_train = (u_train, f_train)
@@ -121,8 +115,6 @@ def main(
         render = None
         print("Module not installed. (pip install graphviz), (sudo apt-get install graphviz)")
    
-
-    from numpyro.infer import NUTS, MCMC
     inf_key = jax.random.PRNGKey(0)
 
     name = f"BPINN_{data_size}_{layers}"
@@ -163,6 +155,9 @@ def main(
         ["m", "gamma", "k"],
         title=f"BPINN/params_oscilator1_{data_size}_{layers}"
     )
+    print("Plots saved in plots/ directory")
+    print("relative L2 error relL2(u, u_hat): ", relative_l2_error(u_test.ravel(), mean_prediction_u))
+    print("relative L2 error relL2(f, f_hat): ", relative_l2_error(f_test.ravel(), mean_prediction_f))
 
 def plot(
         X,
@@ -215,11 +210,11 @@ def boxplot_physical_parameters(
         title,
 ):
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    labels = ["$m$", r"$\gamma$", "$k$"]
+    labels_plot = ["$m$", r"$\\gamma$", "$k$"]
     for i, label in enumerate(labels):
         ax[i].boxplot(samples[label], vert=False)
-        ax[i].set_title(label)
-    fig.suptitle(title)
+        ax[i].set_title(labels_plot[i])
+    #fig.suptitle(title)
     plt.savefig("plots/"+title+".png", dpi=300, bbox_inches='tight')
 
 

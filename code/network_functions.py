@@ -37,3 +37,9 @@ def forward(
     #output layer with no activation
     z = jnp.dot(z, W[-1]) + b[-1]
     return z.squeeze()
+
+def relative_l2_error(
+        y_true: jax.Array,
+        y_pred: jax.Array,
+):
+    return jnp.linalg.norm(y_true - y_pred) / jnp.linalg.norm(y_true)

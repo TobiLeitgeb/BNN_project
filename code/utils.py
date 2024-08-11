@@ -1,3 +1,9 @@
+#############################################
+# Author: Tobias Leitgeb
+# date: 09.2024
+# Description: Bayesian Neural Network with numpyro
+#############################################
+
 import jax
 from typing import Tuple
 import jax.numpy as jnp

@@ -48,7 +48,7 @@ def bnn_model(
 
     if Y is not None:
         assert Y.shape == z.shape , f"Y shape {Y.shape} does not match z shape {z.shape}"
-
+        
     sigma_obs = NOISE_LEVELS[0]*2
     with numpyro.plate("data", N):
         numpyro.sample(

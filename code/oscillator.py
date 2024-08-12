@@ -26,7 +26,7 @@ sys.path.append("../")
 
 sns.set_theme("paper", font_scale=1.5)
 
-NOISE_LEVELS = (0.01, 0.6)
+NOISE_LEVELS = (0.01, 0.3)
 
 def bnn_model(
         X: jax.Array,
@@ -49,9 +49,7 @@ def bnn_model(
     if Y is not None:
         assert Y.shape == z.shape , f"Y shape {Y.shape} does not match z shape {z.shape}"
 
-    #precision_obs = numpyro.sample(r"observation precision", dist.HalfCauchy(1.0))
-    #sigma_obs = 1.0 / jnp.sqrt(precision_obs)   
-    sigma_obs = NOISE_LEVELS[0]
+    sigma_obs = NOISE_LEVELS[0]*2
     with numpyro.plate("data", N):
         numpyro.sample(
             "Y", 
@@ -64,7 +62,7 @@ def main(
         layers, train, data_size, num_warmup, num_samples
 ):
 
-    data = jnp.load('data/oscilator1_data.npy', allow_pickle=True).item()
+    data = jnp.load('data/oscilator2_data.npy', allow_pickle=True).item()
     X, Y, Y_f = data['X'], data['Y'], data['Y_f']
    
     # Sample training points
@@ -127,6 +125,8 @@ def main(
         label=r"2\\sigma uncertainty",
     )
     plt.legend()   
+    plt.xlabel("$x$")
+    plt.ylabel("$u$")
     plt.savefig("plots/"+label+".png", dpi=300, bbox_inches='tight')
 
     print("Plots saved in plots/ directory")

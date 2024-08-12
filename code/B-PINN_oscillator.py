@@ -19,7 +19,7 @@ from utils import sample_training_points_space_filling
 from network_functions import dense_layer, forward, relative_l2_error
 
 
-NOISE_LEVELS = (0.01, 0.4)
+NOISE_LEVELS = (0.01, 0.3)
 # forward pass through the physics network
 def physics_forward(
         W: List[jax.Array],
@@ -67,7 +67,7 @@ def BPINN(
     assert ddz.shape == z.shape, f"ddz shape {ddz.shape} does not match z shape {z.shape}"
 
     m = numpyro.sample(r"m", dist.Uniform(0, 2.))
-    gamma = numpyro.sample(r"gamma", dist.Uniform(1, 3.))
+    gamma = numpyro.sample(r"gamma", dist.Uniform(0, .8))
     k = numpyro.sample(r"k", dist.Uniform(1, 3.))
 
     if Y is not None:
@@ -96,7 +96,7 @@ def main(
         layers, train, data_size, num_warmup, num_samples
 ):
 
-    data = jnp.load('data/oscilator1_data.npy', allow_pickle=True).item()
+    data = jnp.load('data/oscilator2_data.npy', allow_pickle=True).item()
     X, Y, Y_f = data['X'], data['Y'], data['Y_f']
 
 
@@ -150,15 +150,20 @@ def main(
         X, u_test, X_u, u_train, X_test, mean_prediction_u, stddev_prediction_u, 
         f_test, X_f, f_train, mean_prediction_f, stddev_prediction_f, label
     )
-    boxplot_physical_parameters(
-        samples, 
-        ["m", "gamma", "k"],
-        title=f"BPINN/params_oscilator1_{data_size}_{layers}"
-    )
+    #boxplot_physical_parameters(
+    #    samples, 
+    #    ["m", "gamma", "k"],
+    #    title=f"BPINN/params_oscilator1_{data_size}_{layers}"
+    #)
     print("Plots saved in plots/ directory")
     print("relative L2 error relL2(u, u_hat): ", relative_l2_error(u_test.ravel(), mean_prediction_u))
     print("relative L2 error relL2(f, f_hat): ", relative_l2_error(f_test.ravel(), mean_prediction_f))
 
+    #plot_distribution(samples, "m", label)
+    #plot_distribution(samples, "gamma", label)
+    #plot_distribution(samples, "k", label)
+
+    plot_distributions(samples, ["m", "gamma", "k"], label)
 def plot(
         X,
         u_test,
@@ -210,7 +215,7 @@ def boxplot_physical_parameters(
         title,
 ):
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    labels_plot = ["$m$", r"$\\gamma$", "$k$"]
+    labels_plot = ["$m$", r"$\gamma$", "$k$"]
     for i, label in enumerate(labels):
         ax[i].boxplot(samples[label], vert=False)
         ax[i].set_title(labels_plot[i])
@@ -218,6 +223,65 @@ def boxplot_physical_parameters(
     plt.savefig("plots/"+title+".png", dpi=300, bbox_inches='tight')
 
 
+def plot_distribution(samples, param_name, label):
+    data = samples[param_name]
+    
+    # Calculate summary statistics
+    mean = jnp.mean(data)
+    std = jnp.std(data)
+    median = jnp.median(data)
+    perc_5 = jnp.percentile(data, 5)
+    perc_95 = jnp.percentile(data, 95)
+    
+    # Plot the distribution
+    plt.figure(figsize=(10, 6))
+    sns.histplot(data, kde=True, bins=30, color='blue', stat='density')
+    
+    # Annotate the plot with summary statistics
+    plt.axvline(mean, color='r', linestyle='--', label=f'Mean: {mean:.2f}')
+    plt.axvline(median, color='g', linestyle='-', label=f'Median: {median:.2f}')
+    plt.axvline(perc_5, color='b', linestyle='--', label=f'5th Percentile: {perc_5:.2f}')
+    plt.axvline(perc_95, color='b', linestyle='--', label=f'95th Percentile: {perc_95:.2f}')
+    
+    plt.title(f'Distribution of {param_name}')
+    plt.xlabel(param_name)
+    plt.ylabel('Density')
+    plt.legend()
+    plt.savefig("plots/"+label+f"_{param_name}_distribution.png", dpi=300, bbox_inches='tight')
+
+def plot_distributions(samples, param_names, label):
+    num_params = len(param_names)
+    fig, axes = plt.subplots(num_params, 1, figsize=(10, 6 * num_params))
+    
+    for i, param_name in enumerate(param_names):
+        data = samples[param_name]
+        
+        # Calculate summary statistics
+        mean = jnp.mean(data)
+        std = jnp.std(data)
+        median = jnp.median(data)
+        perc_5 = jnp.percentile(data, 5)
+        perc_95 = jnp.percentile(data, 95)
+        
+        # Plot the distribution
+        sns.histplot(data, kde=True, bins=30, stat='density', ax=axes[i], color='blue')
+        
+        # Annotate the plot with summary statistics
+        axes[i].axvline(mean, color='r', linestyle='--', label=f'Mean: {mean:.2f}')
+        axes[i].axvline(median, color='g', linestyle='-', label=f'Median: {median:.2f}')
+        axes[i].axvline(perc_5, color='b', linestyle='--', label=f'5th Percentile: {perc_5:.2f}')
+        axes[i].axvline(perc_95, color='b', linestyle='--', label=f'95th Percentile: {perc_95:.2f}')
+        
+        axes[i].set_title(f'Distribution of {param_name}')
+        axes[i].set_xlabel(param_name)
+        axes[i].set_ylabel('Density')
+        axes[i].legend()
+    
+    plt.tight_layout()
+    plt.savefig(f"plots/{label}_combined_distribution.png", dpi=300)
+    plt.show()
+
+    
 import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

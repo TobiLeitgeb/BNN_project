@@ -120,14 +120,14 @@
     \end{center}
     \end{titlepage}
 \section{Introduction}
-In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. Additionally, there will be a short introduction to Baysian PINNs \cite{Yang_2021}. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown. The complete code used in this report can be found at \href{https://github.com/TobiLeitgeb/BNN_project}{my github}.
+In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. Additionally, there will be a short introduction to Baysian PINNs \cite{Yang_2021}. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown. At the end, there will be two examples for using a BNN for a regression task. The complete code used in this report can be found at \href{https://github.com/TobiLeitgeb/BNN_project}{my github}.
 \section{Mathematical basics}
 \subsection{Baysian Neural Networks}
 A Baysian Neural Network is a Neural Network with stochastic features, like probability distributions for the weights or for the activation functions \cite{BNNTut}. For training general Neural Networks, one maximizes the likelihood $p(\mathcal{D}|\bm \theta)$ to obtain a point estimate $\bm \theta^*$:
 \begin{equation}
     \bm \theta^* = \argmax_{\bm{\theta}} p(\mathcal{D}|\bm \theta)
 \end{equation}
-The training of the BNN on the other hand, is done by calculating the posterior distribution of the parameters $p(\bm \theta | \mathcal{D}$), given the training data $\mathcal D$. This posterior is given by Bayes rule:
+The training of the BNN on the other hand, is done by calculating the posterior distribution of the parameters $p(\bm \theta | \mathcal{D}$), given the training data $\mathcal D$. This has some advantages over general MLE or MAP estimates, since it is less likely to lead to overfitting \cite{BNNdistill}. This posterior is given by Bayes rule:
 \begin{equation} \label{eq:post_params}
     p(\bm \theta|\mathcal{D}) = \frac{p(\mathcal{D}|\bm \theta)p(\bm \theta)}{\int_{\theta'}p(\mathcal{D}|\bm \theta')p(\bm \theta')}
 \end{equation}
@@ -177,9 +177,11 @@ Number of divergences: 2
 
 \subsection{Variational Inference}
 In variational inference the idea is to approximate the posterior distribution with a parameterized approximated distribution $q_\phi (\bm \theta)$. The parameters $\phi$ of this distribution are now optimized, such that they best describe the posterior. For this the Kullback-Liebler divergence is used as a measure of similarity between two probability distributions $p$ and $q$ \cite{murphy, BNNdistill}:
-\begin{equation}\label{eq:kullback}
+\begin{equation}
+\begin{aligned}\label{eq:kullback}
     d_{KL} [q(\bm \theta)|| p(\theta|\mathcal{D})] &= \int_{\bm \theta'} q_\phi(\bm \theta) \log \frac{q_\phi(\bm \theta)}{p(\bm \theta|\mathcal{D})} d\bm \theta\\
     &=\mathbb{E}_{q_\phi(\bm \theta)}[\log(q_\phi(\bm \theta) - \log p(\bm \theta|\mathcal{D})]
+\end{aligned}
 \end{equation}
 The optimization problem can then be formulated as \cite{murphy}:
 \begin{equation}\label{eq:optprob}
@@ -420,16 +422,16 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
 with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\bm x_i$ is the design vector for the circuit, with the parameters which are beeing adapted. For this example we have:
 \begin{equation}
     x_i = [...]
-\end{equation}Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. In this application the goal is to define a surrogate model for the transformer LT spice model. For this example 500 configurations were simulated. For training we used 200 samples. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions. 
+\end{equation}Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. The used model architecture was 2 hidden layers with 128 neurons and an output layer of size $p$ of the frequency points. The $ReLu$ function was used as activation. In this application the goal is to define a surrogate model for the transformer LT spice model. For this example 500 configurations were simulated. For training we used 200 samples. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions. The mean of the drawn samples describes the function well, while the predicted uncertainty is predicted way to high. Here, more work would need to be done to find a more suitable model architecture. The construction of an accurate surrogate for problems in power electronics/EMC is an ongoing topic, for which baysian neural networks could be interesting.
 \begin{figure}[htbp!]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/data_samples.png}
-    \caption{Training samples $\bm Y_i$ plotted over the frequency domain. One line is the frequency response for a circuit parameterized by the respective $\bm X_i$.}
+    \includegraphics[width=0.6\textwidth]{plots/transformer/data_samples.png}
+    \caption{Training samples $\bm Y_i$ plotted over the frequency domain. One curve is the response over the frequency range for a circuit parameterized by the respective $\bm X_i$.}
     \label{fig:training_samples}
 \end{figure}
 \begin{figure}[htbp!]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/prediction_transformer.png}
+    \includegraphics[width=0.6\textwidth]{plots/transformer/prediction_transformer.png}
     \caption{Calculated posteriors for test samples $\bm X_\text{test}$. With mean function and 95 \% confidence interval.}
     \label{fig:training_samples}
 \end{figure}
@@ -440,96 +442,63 @@ Let's consider a one-dimensional differential equation that models a damped osci
     & m\frac{\partial^2 u(t)}{\partial t^2} + \gamma \frac{\partial u(t)}{\partial t} + k u(t) = f(t), \\
     & u(0) = 0, \quad \frac{\partial u(t)}{\partial t}\bigg|_{t=0} = 0
 \end{align}
-The specific case we're examining uses the parameters \( m = 1 \), \( \gamma = 0.2 \), and \( k = 2 \), with a sinusoidal external force described by:
+The specific case we're examining uses the parameters \( m = 1 \), \( \gamma = 0.2 \), and \( k = 2 \), with an external force described by:
 \begin{equation}
     % f(t) = 4 \sin(2\pi t)\\
     f(t) = 10\sin(\pi t)\cos(4\pi t)
 \end{equation}
-For the data, a noise level of $\sigma_{\text{nu}} = 0.01$ and $\sigma_{\text{nf}} = 0.5$ was introduced, effectively creating noise-free data. The result was computed over the time interval \( t \in [0,3] \), from which the training points were sampled using a sobol sequence. 
-
+For the data, a noise level of $\sigma_{\text{nu}} = 0.01$ and $\sigma_{\text{nf}} = 0.3$ was introduced, effectively creating noise-free data. The result was computed over the time interval \( t \in [0,3] \), from which the training points were sampled using a sobol sequence. 
+\newpage
 \subsubsection{General feed forward BNN}
 At the start, we look at a simple feed forward neural network with two hidden layers and 20 neurons per layer. For training we use 20 training points. There also is the possibility to directly render a flowchart of the model, which describes the properties of the defined function or model:
-\begin{figure}[h]
+\begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.7\textwidth]{plots/bnn_oscilator1_pinn.pdf}
     \caption{Graph of the general feed forward network}
     \label{fig:training_samples}
 \end{figure}
-
-\begin{figure}[h]
+\begin{figure}[htbp!]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/BNN/oscilator1_20_[20, 20, 1].png}
-    \caption{ $n_\text{train}$ = 20  $rel \; L^2 = 0.09223274$}
+    \includegraphics[width=0.6\textwidth]{plots/BNN/oscilator1_60_[20, 20, 1].png}
+    \caption{Prediction of the general network with \nt=60. The mean had an rel$L^2$ of $L^2_u=0.051$ and $L^2_f=0.110$.}
     \label{fig:training_samples}
 \end{figure}
+The predictions are very accurate, however the uncertainty is predicted to low for some reason.
 \subsubsection{B-PINN}
-For this example, also the data from the forcing term $f$ is used. Furthermore, the physical parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \) are introduced as probability distributions. They are assigned a prior and are then learned in the inference process. Again we show the properties of the model with the flowchart:
-\begin{figure}[h]
+For this example, also the data from the forcing term $f$ is used. Furthermore, the physical parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \) are introduced as probability distributions. They are assigned a prior and are then learned in the inference process. Again we show the properties of the model with the flowchart \ref{fig:modelrender}.
+\begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.7\textwidth]{plots/BPINN/bnn_oscilator1_pinn.pdf}
     \caption{Graph of the physics informed BPINN model.}
-    \label{fig:training_samples}
+    \label{fig:modelrender}
 \end{figure}
-Again a network with 2 hidden layers with 20 neurons is used, as well as the same 20 training points. The solution term $u$ and the forcing term $f$ can both, after the training stage, be predicted.
+Again a network with 2 hidden layers with 20 neurons is used, as well as the same 20 training points. The solution term $u$ and the forcing term $f$ can both, after the training stage, be predicted. The plots for the B-PINN can be seen in \ref{fig:BPINNpred}.
 \begin{figure}[htbp!]
     \centering
-    \includegraphics[width=0.6\textwidth]{plots/BPINN/oscilator1_20_[20, 20, 1].png}
-    \caption{Samples from the training data for frequency domain relative L2 error relL2(u, u_hat):  0.07171381
-relative L2 error relL2(f, f_hat):  0.2000248 0.01 0.4}
-    \label{fig:training_samples}
+    \includegraphics[width=0.6\textwidth]{plots/BPINN/oscilator1_60_[20, 20, 1].png}
+    \caption{Prediction of the B-PINN with \nt = 60 for both $u$ and $f$. The predicted mean had an rel$L^2$ of $L^2_u=0.051$ and $L^2_f=0.110$.}
+    \label{fig:BPINNpred}
 \end{figure}
-\begin{figure}[htbp!]
-    \centering
-    \includegraphics[width=0.6\textwidth]{plots/BPINN/params_oscilator1_20_[20, 20, 1].png}
-    \caption{Samples from the training data for frequency domain}
-    \label{fig:training_samples}
-\end{figure}
-Now we want to increase the amount of available training points and check the posterior distributions of the physical hyperparameters. 
-\documentclass{article}
-\usepackage{graphicx}
-\usepackage{subcaption}
-
-\begin{document}
-
+We can see that the predictions for both $u$ and $f$ are very accurate, even with the data having a small noise. In comparison to the general model, the accuracy increased by a small margin of 0.01, which is not that big. However, when checking different amounts of training samples, we saw that the B-PINN performed better for the cases we looked at. Since we formulated the problem in an inverse way, meaning that we do not have knowledge of the parameters of the differential equation, it is also interesting to look at the posterior distributions of the parameters $m, \gamma$ and $k$. The model was training with \nt=60 and \nt=150 and the distributions of the physical parameters plotted in a histogram, together with mean, meadian and percentiles. The plots can be seen in figure \ref{fig:post_dens_params}.
 \begin{figure}[htbp!]
     \centering
     % First row of plots
     \begin{subfigure}[b]{0.45\textwidth}
         \centering
-        \includegraphics[width=\textwidth]{plots/bnn_oscilator1_pinn.pdf}
-        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=40}
+        \includegraphics[width=\textwidth]{plots/BPINN/oscilator1_60_[20, 20, 1]_combined_distribution.png}
+        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=60}
         \label{fig:plot1}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.45\textwidth}
         \centering
-        \includegraphics[width=\textwidth]{plots/bnn_oscilator1_pinn.pdf}
-        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=40}
+        \includegraphics[width=\textwidth]{plots/BPINN/oscilator1_150_[20, 20, 1]_combined_distribution.png}
+        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=150}
         \label{fig:plot2}
-    \end{subfigure}
-    
-    % Second row of plots
-    \begin{subfigure}[b]{0.45\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{/bnn_oscilator1_pinn.pdf}
-        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=80}
-        \label{fig:plot3}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.45\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{/bnn_oscilator1_pinn.pdf}
-        \caption{Probability densities for the physical parameters \( m \), \( \gamma  \), and \( k \) with \nt=80}
-        \label{fig:plot4}
-    \end{subfigure}
-    
-    \caption{Four plots arranged in two rows, two plots per row}
-    \label{fig:four_plots}
+    \end{subfigure} 
+    \caption{Posterior distributions of the parameters of the differential equation.}
+    \label{fig:post_dens_params}
 \end{figure}
-
-\end{document}
-
-
 \newpage
 \printbibliography
 \newpage

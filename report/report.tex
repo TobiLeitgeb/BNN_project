@@ -151,8 +151,6 @@ mcmc.print_summary()
 \end{lstlisting}
 After running the inference, the summary gives an overview of the calculated samples for the parameters of the network:
 \begin{lstlisting}[caption= {Results of Inference with HMC},captionpos=t]
-sample: 100%|██████████| 2000/2000 [04:36<00:00,  7.23it/s, 1023 steps of size 6.49e-04. acc. prob=0.93]
-
                              mean       std    median      5.0%     95.0%     n_eff     r_hat
                 W0[0,0]     -0.06      0.98      0.06     -1.71      1.31     12.27      1.10
                 W0[0,1]     -0.14      0.82     -0.11     -1.71      1.05     33.64      1.10
@@ -170,8 +168,6 @@ sample: 100%|██████████| 2000/2000 [04:36<00:00,  7.23it/s, 
                W0[0,13]      0.03      0.95     -0.05     -1.56      1.59     24.91      1.00
 ...
                   b2[0]      0.26      0.94      0.29     -1.18      1.81     34.99      1.01
-  observation precision     44.33      6.95     44.19     34.01     56.20     14.91      1.08
-
 Number of divergences: 2
 \end{lstlisting}
 
@@ -202,13 +198,13 @@ With this reformulation, the optimization of the variational parameters is refor
 At last, we briefly want to demonstrate how to do VI in \textit{NumPyro}:
 \begin{lstlisting}[caption= {Inference with VI},captionpos=t]
 from numpyro.infer.autoguide import AutoDiagonalNormal, AutoLaplaceApproximation, AutoMultivariateNormal, AutoIAFNormal, AutoLowRankMultivariateNormal, AutoDelta
-#define the 
+#define the variational distribution q
 guide = AutoDiagonalNormal(BNN_model)
-
+#select stochastic variational inference routine
 svi = SVI(
     wideband_dnn, guide, numpyro.optim.Adam(0.05), Trace_ELBO()
 )
-
+#train q
 svi_result = svi.run(
     jax.random.PRNGKey(0),
     num_steps=3000,
@@ -254,8 +250,8 @@ def physics_forward(
         X: jax.Array,
         activation: Callable,
 ):
-    #input layer
     u = partial(forward, W, b, activation=activation)
+    #calculate first and second derivative
     u_prime = jax.grad(u)
     u_double_prime = jax.grad(u_prime)
 
@@ -272,21 +268,34 @@ To formulate this in terms of baysian NN, the posterior is augmented with the ad
 with the prior distribution for the parameters of the differential equation. If the parameters $\phi$ are a-priori unknown, they can be assigned a prior function $p(\phi)$ and then be learned directly through inference \cite{raissi2017physicsIDL, Yang_2021}.
 The joint likelihood can be implemented in \textit{NumPyro} as:
 \begin{lstlisting}[caption={Joint likelihood for B-PINN},captionpos=t]
-z = forward(W, b, X_u, activation)[:, None]
-dz, ddz = physics_forward(W, b, X_f, activation)
-f = m * ddz + gamma * dz + k * z
-
-#joint likelihood
-numpyro.sample(
-    r"Y_u", 
-    dist.Normal(z, sigma_obs_u).to_event(1), 
-    obs=Y_u
-)
-numpyro.sample(
-    r"Y_f", 
-    dist.Normal(f, sigma_obs_f).to_event(1), 
-    obs=Y_f
-)
+#callculate all parts for the differential equation
+def BPINN(
+        X: jax.Array,
+        Y: jax.Array,
+        layers: List[int],
+):
+    ...
+    ...
+    z = forward(W, b, X_u, activation)[:, None]
+    dz, ddz = physics_forward(W, b, X_f, activation)
+    #prior distributions for physical parameters
+    m = numpyro.sample (r"m" ,dist.Uniform ( 0 , 2.))
+    gamma = numpyro.sample (r"gamma", dist.Uniform(0, .8))
+    k = numpyro.sample (r"k", dist.Uniform(1, 3.))
+        
+    f = m * ddz + gamma * dz + k * z
+    
+    #define the joint likelihood
+    numpyro.sample(
+        r"Y_u", 
+        dist.Normal(z, sigma_obs_u).to_event(1), 
+        obs=Y_u
+    )
+    numpyro.sample(
+        r"Y_f", 
+        dist.Normal(f, sigma_obs_f).to_event(1), 
+        obs=Y_f
+    )
 \end{lstlisting} 
 \section{Setting up the model}
 A very default prior for the parameters of the BNN which has proven to work relatively well \cite{BNNTut} is:
@@ -421,7 +430,7 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
 \end{align}
 with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\bm x_i$ is the design vector for the circuit, with the parameters which are beeing adapted. For this example we have:
 \begin{equation}
-    x_i = [...]
+    \bm x_i = [...]
 \end{equation}Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. The used model architecture was 2 hidden layers with 128 neurons and an output layer of size $p$ of the frequency points. The $ReLu$ function was used as activation. In this application the goal is to define a surrogate model for the transformer LT spice model. For this example 500 configurations were simulated. For training we used 200 samples. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions. The mean of the drawn samples describes the function well, while the predicted uncertainty is predicted way to high. Here, more work would need to be done to find a more suitable model architecture. The construction of an accurate surrogate for problems in power electronics/EMC is an ongoing topic, for which baysian neural networks could be interesting.
 \begin{figure}[htbp!]
     \centering
@@ -432,7 +441,7 @@ with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\b
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/transformer/prediction_transformer.png}
-    \caption{Calculated posteriors for test samples $\bm X_\text{test}$. With mean function and 95 \% confidence interval.}
+    \caption{Calculated posteriors for 4 test samples $\bm X_\text{test}$. With mean function and 95 \% confidence interval.}
     \label{fig:training_samples}
 \end{figure}
 \subsection{Damped Oscillator}
@@ -460,26 +469,26 @@ At the start, we look at a simple feed forward neural network with two hidden la
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/BNN/oscilator1_60_[20, 20, 1].png}
-    \caption{Prediction of the general network with \nt=60. The mean had an rel$L^2$ of $L^2_u=0.051$ and $L^2_f=0.110$.}
+    \caption{Prediction of the general network with \nt=60. The mean had an rel$L^2$ of $L^2_u=0.062$}
     \label{fig:training_samples}
 \end{figure}
 The predictions are very accurate, however the uncertainty is predicted to low for some reason.
 \subsubsection{B-PINN}
-For this example, also the data from the forcing term $f$ is used. Furthermore, the physical parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \) are introduced as probability distributions. They are assigned a prior and are then learned in the inference process. Again we show the properties of the model with the flowchart \ref{fig:modelrender}.
+For this example, also the data from the forcing term $f$ is used. Furthermore, the physical parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \) are introduced as probability distributions. In this example, we are using uninformative priors for the physical parameters. They are assigned a prior and are then learned in the inference process. Again we show the properties of the model with the flowchart \ref{fig:modelrender}.
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.7\textwidth]{plots/BPINN/bnn_oscilator1_pinn.pdf}
     \caption{Graph of the physics informed BPINN model.}
     \label{fig:modelrender}
 \end{figure}
-Again a network with 2 hidden layers with 20 neurons is used, as well as the same 20 training points. The solution term $u$ and the forcing term $f$ can both, after the training stage, be predicted. The plots for the B-PINN can be seen in \ref{fig:BPINNpred}.
+Again a network with 2 hidden layers with 20 neurons is used, with a $\tanh$ activation function. For training the same 60 training points were used. The solution term $u$ and the forcing term $f$ can both, after the training stage, be predicted. The plots for the B-PINN can be seen in \ref{fig:BPINNpred}.
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/BPINN/oscilator1_60_[20, 20, 1].png}
     \caption{Prediction of the B-PINN with \nt = 60 for both $u$ and $f$. The predicted mean had an rel$L^2$ of $L^2_u=0.051$ and $L^2_f=0.110$.}
     \label{fig:BPINNpred}
 \end{figure}
-We can see that the predictions for both $u$ and $f$ are very accurate, even with the data having a small noise. In comparison to the general model, the accuracy increased by a small margin of 0.01, which is not that big. However, when checking different amounts of training samples, we saw that the B-PINN performed better for the cases we looked at. Since we formulated the problem in an inverse way, meaning that we do not have knowledge of the parameters of the differential equation, it is also interesting to look at the posterior distributions of the parameters $m, \gamma$ and $k$. The model was training with \nt=60 and \nt=150 and the distributions of the physical parameters plotted in a histogram, together with mean, meadian and percentiles. The plots can be seen in figure \ref{fig:post_dens_params}.
+We can see that the predictions for both $u$ and $f$ are very accurate, even with the data having a small noise. In comparison to the general model, the accuracy increased by a small margin of 0.01, which is not that big. However, when checking different amounts of training samples, we saw that the B-PINN performed better for the cases we looked at. When the distribution of the physical parameters is a-priori known, there would probably be more performance gains. Since we formulated the problem in an inverse way, meaning that we do not have knowledge of the parameters of the differential equation, it is also interesting to look at the posterior distributions of the parameters $m, \gamma$ and $k$. The model was training with \nt=60 and \nt=150 and the distributions of the physical parameters plotted in a histogram, together with mean, median and percentiles. The plots can be seen in figure \ref{fig:post_dens_params}. We can see that the results vary with the different amount of training points. The distribution for $m$ describes the true value of $m=1$ very good. With $\gamma$ there are bigger problems, especially for \nt = 150 the distribution does not describe $\gamma=0.2$ very well. For better results a lot more tweeking of the model architecture is needed. However, there is a clear trend towards the true values acros the board.
 \begin{figure}[htbp!]
     \centering
     % First row of plots

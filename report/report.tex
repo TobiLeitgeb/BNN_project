@@ -22,6 +22,7 @@
 \usepackage{tikz}
 \usepackage{microtype}
 \usepackage{float}
+\usepackage[outputdir=../]{minted}
 
 \usepackage{listings}
 \usepackage{xcolor}
@@ -56,7 +57,7 @@
     tabsize=4,
     captionpos=b,
     language=Python,
-    morekeywords={self, np, plt, def, sample, plate, partial, jax},
+    morekeywords={self, def},
     literate=*{:}{{\textcolor{number}{:}}}1
              {=}{{\textcolor{number}{=}}}1
              {+}{{\textcolor{number}{+}}}1
@@ -72,9 +73,8 @@
              {]}{{\textcolor{number}{]}}}1
 }
 
-% Define a custom function style
 \lstdefinestyle{mystyle}{
-    morekeywords=[2]{somefunction}, % Add your function names here
+    morekeywords=[2]{BPINN, forward, physics_forward, main, sample, Normal, grad, dot, activation, norm, expand, squeeze, run, vmap, append, load, render, render_model, get_samples, save, mean, std, plot, ravel, print_summary, BNN_model, relu, tanh, sqrt, var, partial, flatten, normal, }, % Add your function names here
     keywordstyle=[2]{\color{function}}
 }
 
@@ -120,6 +120,7 @@
     \end{center}
     \end{titlepage}
 \section{Introduction}
+
 In this report we will look at the basics of Baysian Neural Networks, how to implement them and at some specific exemplary problems. Additionally, there will be a short introduction to Baysian PINNs \cite{Yang_2021}. I want to give a quick overview of the mathematics needed for defining a Baysian Neural Network, training it and predicting new samples. For implementing the BNN, \textit{NumPyro} \cite{bingham2019pyro, phan2019composable} is used, which is a probabilistic library build in \textit{JAX} \cite{jax2018github}. This \textit{JAX} backend provides very fast and efficient computing through access to JIT compilation, automatic differentiation and support of CUDA. Through some examples, the basic of \textit{NumPyro} and \textit{JAX} will be shown. At the end, there will be two examples for using a BNN for a regression task. The complete code used in this report can be found at \href{https://github.com/TobiLeitgeb/BNN_project}{my github}.
 \section{Mathematical basics}
 \subsection{Baysian Neural Networks}
@@ -144,31 +145,32 @@ from numpyro.infer import NUTS, MCMC
 #define pseudo random number generator key
 inf_key = jax.random.PRNGKey(0)
 #define mcmc with the NUTS sampler, the network and the number of samples
-mcmc = MCMC(NUTS(BNN_model), num_warmup=1000, num_samples=1000)
+mcmc = MCMC(NUTS(BNN_model), num_warmup=1000, {num_samples=1000)
 #running inference with the training data 
 mcmc.run(inf_key, X_train, Y_train, LAYERS)
 mcmc.print_summary()
 \end{lstlisting}
 After running the inference, the summary gives an overview of the calculated samples for the parameters of the network:
 \begin{lstlisting}[caption= {Results of Inference with HMC},captionpos=t]
-                             mean       std    median      5.0%     95.0%     n_eff     r_hat
-                W0[0,0]     -0.06      0.98      0.06     -1.71      1.31     12.27      1.10
-                W0[0,1]     -0.14      0.82     -0.11     -1.71      1.05     33.64      1.10
-                W0[0,2]     -0.03      0.84     -0.09     -1.29      1.37     25.33      1.21
-                W0[0,3]     -0.04      0.92     -0.03     -1.66      1.33     15.52      1.10
-                W0[0,4]     -0.24      0.72     -0.22     -1.44      0.90     27.59      1.06
-                W0[0,5]      0.12      0.95      0.10     -1.46      1.72     40.72      1.06
-                W0[0,6]      0.14      0.67      0.10     -0.96      1.27     61.09      1.00
-                W0[0,7]      0.22      0.95      0.13     -1.22      1.88     25.26      1.01
-                W0[0,8]     -0.17      0.89     -0.15     -1.70      1.17     29.00      1.03
-                W0[0,9]     -0.05      0.79     -0.03     -1.42      1.24     38.40      1.05
-               W0[0,10]      0.06      0.86      0.04     -1.46      1.43     13.57      1.13
-               W0[0,11]      0.20      0.88      0.23     -1.10      1.85     30.89      1.05
-               W0[0,12]      0.16      0.87      0.23     -1.37      1.62     32.36      1.12
-               W0[0,13]      0.03      0.95     -0.05     -1.56      1.59     24.91      1.00
+"""                           mean       std    median      5.0%     95.0%     n_eff     r_hat
+                 W0[0,0]     -0.06      0.98      0.06     -1.71      1.31     12.27      1.10
+                 W0[0,1]     -0.14      0.82     -0.11     -1.71      1.05     33.64      1.10
+                 W0[0,2]     -0.03      0.84     -0.09     -1.29      1.37     25.33      1.21
+                 W0[0,3]     -0.04      0.92     -0.03     -1.66      1.33     15.52      1.10
+                 W0[0,4]     -0.24      0.72     -0.22     -1.44      0.90     27.59      1.06
+                 W0[0,5]      0.12      0.95      0.10     -1.46      1.72     40.72      1.06
+                 W0[0,6]      0.14      0.67      0.10     -0.96      1.27     61.09      1.00
+                 W0[0,7]      0.22      0.95      0.13     -1.22      1.88     25.26      1.01
+                 W0[0,8]     -0.17      0.89     -0.15     -1.70      1.17     29.00      1.03
+                 W0[0,9]     -0.05      0.79     -0.03     -1.42      1.24     38.40      1.05
+                W0[0,10]      0.06      0.86      0.04     -1.46      1.43     13.57      1.13
+                W0[0,11]      0.20      0.88      0.23     -1.10      1.85     30.89      1.05
+                W0[0,12]      0.16      0.87      0.23     -1.37      1.62     32.36      1.12
+                W0[0,13]      0.03      0.95     -0.05     -1.56      1.59     24.91      1.00
 ...
                   b2[0]      0.26      0.94      0.29     -1.18      1.81     34.99      1.01
 Number of divergences: 2
+"""
 \end{lstlisting}
 
 \subsection{Variational Inference}
@@ -188,7 +190,7 @@ For solving this optimization problem, \eqref{eq:kullback} has to be rewritten, 
 \begin{align}
     \phi &= \arg \min_\phi d_{KL} [q(\bm \theta)|| p(\theta|\mathcal{D}]\nunumber\\
     &= \arg \min_\phi \mathbb{E}_{q_\phi(\bm \theta}[\log q_\phi(\bm \theta) - \log p(\bm \theta|\mathcal{D})]\nonumber\\
-    &= \arg \max_\phi \underbrace{\mathbb{E}_{q_\phi(\bm \theta}[\log p(\bm \theta, \mathcal{D}) - \log q_\phi(\bm \theta)]}_{\Tilde{\mathcal{L}}(\phi) = \text{ELBO}} + \log p(\mathcal{D)}\\
+    &= \arg \max_\phi \underbrace{\mathbb{E}_{q_\phi(\bm \theta}[\log p(\bm \theta, \mathcal{D}) - \log q_\phi(\bm \theta)]}_{\Tilde{\mathcal{L}}(\phi) = \text{ELBO}} + \log p(\mathcal{D)}
 \end{align}
 where the marginal data likelihood $p(\mathcal{D})$ can be left out for the optimization of $\phi$, since it does not depend on the variational parameters. Here the evidence lower bound (ELBO) is introduced. The name of the ELBO comes from the fact that it is the lower bound of the evidence $p(\mathcal{D})$, s.t. \cite{murphy}:
 \begin{equation}
@@ -213,12 +215,13 @@ svi_result = svi.run(
     layers=LAYERS
 )
 \end{lstlisting}
+As a guide, we used a diagonal normal distribution. In numpyro there are the so called autoguides, which automatically tune the guide. Therefore we do not have to specify any parameters before training. This makes quickly building a model very easy. However, for fine tuning more work is needed.
 \subsection{Predictive distribution}
 After having obtained samples, or a variational approximation of the posterior $p(\bm \theta|\mathcal{D})$, predictions at unseen test points $\bm x_*$ can be made. For this we have to formulate a distribution $p(f(\bm x_*|\mathcal{D})$, which is obtained by marginalization of the calculated parameters $\bm \theta$:
 \begin{equation}\label{eq:predictivedist}
     p(\bm f( \bm x_*) |\mathcal{D}) = \int_{\bm \theta} p(\bm f ({\bm x_*})|\bm \theta ) p(\bm \theta | \mathcal{D})d \bm \theta = \mathbb{E}_{p(\theta|\mathcal{D})} \left[ p(\bm f ({\bm x_*})|\bm \theta )\right]
 \end{equation}
-Writing the integral in terms of an conditional expectation of the posterior distribution of $\bm \theta$, gives an interesting view of the marginalized distribution, as the exptectation value of a single neural net output wheighted by the posterior ditribution of the parameters given the training data. In \cite{blundell2015weightuncertaintyneuralnetworks} this is described as an \textit{infinite ensenmble} of Neural Networks. In practice we can not calculate an infinite number of networks. However when having obtained enough iid. samples (monte carlo samples) of the posterior distribution $p(\bm \theta|\mathcal{D})$, the expectation value in \eqref{eq:predictivedist} can be approximated. Generating samples of the posterior is slightly different for the two inference algorithms discussed above. When using MCMC, ($\approx$ independent) samples of the posterior are obtained directly. For every sample $\bm \theta_i$, which is a set of parameters, the networks output $p(\bm f(\bm x_*)|\bm \theta_i)$ is computed. We now approximate the expectation value by taking the mean over all the samples. When using VI the process is nearly the same. After having obtained the trained variational distribution $q$, we can sample from that distribution and again do the same thing as described above with the samples. 
+Writing the integral in terms of an conditional expectation of the posterior distribution of $\bm \theta$, gives an interesting view of the marginalized distribution, as the expectation value of a single neural net output wheighted by the posterior distribution of the parameters given the training data. In \cite{blundell2015weightuncertaintyneuralnetworks} this is described as an \textit{infinite ensemble} of Neural Networks. In practice we can not calculate an infinite number of networks. However, when having obtained enough iid. samples (monte carlo samples) of the posterior distribution $p(\bm \theta|\mathcal{D})$, the expectation value in \eqref{eq:predictivedist} can be approximated. Generating samples of the posterior is slightly different for the two inference algorithms discussed above. When using MCMC, ($\approx$ independent) samples of the posterior are obtained directly. For every sample $\bm \theta_i$, which is a set of parameters, the networks output $p(\bm f(\bm x_*)|\bm \theta_i)$ is computed. We now approximate the expectation value by taking the mean over all the samples. When using VI the process is nearly the same. After having obtained the trained variational distribution $q$, we can sample from that distribution and again do the same thing as described above with the samples. 
 \subsection{Physics informed Baysian Neural Network}
 In this section, the baysian equivalence of a PINN, a so called B-PINN \cite{Yang_2021}, is quickly introduced and later on used for a simple example. \\
 For PINNs the loss function $\mathcal{L}$ is augmented with an additional physics term:
@@ -260,7 +263,6 @@ def physics_forward(
     u_double_prime = jax.vmap(lambda x: u_double_prime(x.squeeze()))(X)
     return u_prime, u_double_prime[:, None]
 \end{lstlisting}
-\\
 To formulate this in terms of baysian NN, the posterior is augmented with the additional likelihood for the function $f$:
 \begin{equation} \label{eq:post_params_BPINN}
     p(\bm \theta, \phi|\mathcal{D}_u, \mathcal{D}_f) = \frac{p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta, \phi)p(\bm \theta)p(\phi)}{\int_{\theta'}p(\mathcal{D}_u, \mathcal{D}_f|\bm \theta')p(\bm \theta')}
@@ -405,11 +407,11 @@ def predict_new(
     else:
         return jnp.mean(predictions["Y"], axis=0), jnp.var(predictions["Y"], axis=0), predictions
 \end{lstlisting}
-
+\newpage
 \section{Numerical examples}
 The error functions to quantify the testing error are the relative L2 error and the Normalized Root Mean Squared Error (NRMSE):
 \begin{align}
-     rel \; L^2 = \sqrt{\frac{\sum_i (\hat{y}_i - y)^2}{\sum_i (y_i)^2}}\\
+     rel \; L^2 = \sqrt\frac{\sum_i (\hat{y}_i - y)^2}{\sum_i (y_i)^2}\\
     \text{NRMSE} = \sqrt \tfrac{1}{n}\sum_{i=1}^n (\hat{y}_i - y)^2
 \end{align}
 \subsection{Transistor surrogate model/Transformer model akash}
@@ -428,10 +430,8 @@ Here the data set consists of an inputs $ \bm x$, which specify the circuit layo
         \bm y_N^T
     \end{bmatrix}
 \end{align}
-with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\bm x_i$ is the design vector for the circuit, with the parameters which are beeing adapted. For this example we have:
-\begin{equation}
-    \bm x_i = [...]
-\end{equation}Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. The used model architecture was 2 hidden layers with 128 neurons and an output layer of size $p$ of the frequency points. The $ReLu$ function was used as activation. In this application the goal is to define a surrogate model for the transformer LT spice model. For this example 500 configurations were simulated. For training we used 200 samples. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions. The mean of the drawn samples describes the function well, while the predicted uncertainty is predicted way to high. Here, more work would need to be done to find a more suitable model architecture. The construction of an accurate surrogate for problems in power electronics/EMC is an ongoing topic, for which baysian neural networks could be interesting.
+with $\bm x_i \in \mathbb{R}^d$ and $\bm y_i \in \mathbb{R}^{p}$. The vector $\bm x_i$ is the design vector for the circuit, with the parameters which are beeing adapted.
+Therefore, we get two matrices $\bm X, \bm Y$ with shapes $(N, d)$ and $(N, p)$, where $N$ is the number of training points, $d$ is the dimensionality of the input and $p$ is the number of frequency outputs. The BNN is designed as: $\bm f(\bm x, \bm \theta): \mathbb{R}^d \rightarrow \mathbb{R}^p$ to yield an output for the whole frequency range. It would also be possible to use the frequency as a part of the input $\bm x$. However, this would highly increase the complexity of the input space and would not yield better results. The used model architecture was 2 hidden layers with 128 neurons and an output layer of size $p$ of the frequency points. The $ReLu$ function was used as activation. In this application the goal is to define a surrogate model for the transformer LT spice model. For this example 500 configurations were simulated. For training we used 200 samples. BNNs are interesting for surrogate modelling, since they also give an uncertainty quantification. When looking at the samples and at the calculated predictions, it is interesting to see that the model quantifies the uncertainty somewhat wrong especially in the are from $10^6 - 10^7 $Hz. Between different circuit parameterizations, there is nearly no difference in these regions. The mean of the drawn samples describes the function well, while the predicted uncertainty is predicted way to high. Here, more work would need to be done to find a more suitable model architecture. The construction of an accurate surrogate for problems in power electronics/EMC is an ongoing topic, for which baysian neural networks could be interesting.
 \begin{figure}[htbp!]
     \centering
     \includegraphics[width=0.6\textwidth]{plots/transformer/data_samples.png}
@@ -472,7 +472,7 @@ At the start, we look at a simple feed forward neural network with two hidden la
     \caption{Prediction of the general network with \nt=60. The mean had an rel$L^2$ of $L^2_u=0.062$}
     \label{fig:training_samples}
 \end{figure}
-The predictions are very accurate, however the uncertainty is predicted to low for some reason.
+The predictions are very accurate, however the uncertainty is predicted to low for some reason. Unfortunately, assigning a prior for the output precision did not work at all. The model was not able to learn the function accurately, because the precision was predicted to low.
 \subsubsection{B-PINN}
 For this example, also the data from the forcing term $f$ is used. Furthermore, the physical parameters \( m = 1 \), \( \gamma = 2 \), and \( k = 2 \) are introduced as probability distributions. In this example, we are using uninformative priors for the physical parameters. They are assigned a prior and are then learned in the inference process. Again we show the properties of the model with the flowchart \ref{fig:modelrender}.
 \begin{figure}[htbp!]
@@ -511,14 +511,14 @@ We can see that the predictions for both $u$ and $f$ are very accurate, even wit
 \newpage
 \printbibliography
 \newpage
-\begin{appendices}
+\appendix
 \section{Source Code}
 \lstinputlisting[]{../code/network_functions.py}
 \lstinputlisting[]{../code/oscillator.py}
 \lstinputlisting[]{../code/B-PINN_oscillator.py}
 \lstinputlisting[]{../code/utils.py}
-\end{appendices}
+\lstinputlisting[]{../code/transformer_surrogate.py}
 
 
 
-\end{document}
+\end{document} 
